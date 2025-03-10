@@ -1,0 +1,61 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  background-color: #f8f9fa;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+  background-color: #f5f5f5;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+/* Italian flag-inspired header underlines */
+h2:after, h3:after {
+  content: '';
+  display: block;
+  width: 60px;
+  height: 4px;
+  margin-top: 8px;
+  margin-bottom: 20px;
+  background: linear-gradient(to right, #008C45 33.3%, #FFFFFF 33.3%, #FFFFFF 66.6%, #CD212A 66.6%);
+}
+
+/* Focus outlines for accessibility */
+a:focus, button:focus, input:focus, textarea:focus, select:focus {
+  outline: 3px solid rgba(21, 101, 192, 0.3);
+  outline-offset: 2px;
+}
+
+/* Improve legibility of links */
+a {
+  text-decoration: none;
+  color: #1565C0;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: #0D47A1;
+  text-decoration: underline;
+}
+
+/* Smooth transitions for interactive elements */
+button, .btn, .card, .nav-link {
+  transition: all 0.2s ease;
+}
+
+/* Container adjustments for better mobile experience */
+@media (max-width: 576px) {
+  .container {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}

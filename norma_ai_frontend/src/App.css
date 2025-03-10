@@ -1,0 +1,113 @@
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1;
+}
+
+.logo {
+  height: 40px;
+}
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+}
+
+.card-hover:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+  transition: all 0.3s ease;
+}
+
+.footer {
+  margin-top: auto;
+  padding: 1.5rem 0;
+  background-color: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+}
+
+.hero-section {
+  background-color: #f8f9fa;
+  padding: 4rem 0;
+  margin-bottom: 2rem;
+  border-radius: 8px;
+}
+
+.severity-high {
+  color: #dc3545;
+}
+
+.severity-medium {
+  color: #fd7e14;
+}
+
+.severity-low {
+  color: #198754;
+}
+
+.document-card {
+  height: 100%;
+  transition: all 0.3s ease;
+}
+
+.auth-form-container {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 2rem;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  background-color: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.compliance-tag {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.compliance-compliant {
+  background-color: #d1e7dd;
+  color: #0f5132;
+}
+
+.compliance-non-compliant {
+  background-color: #f8d7da;
+  color: #842029;
+}
+
+.compliance-analyzing {
+  background-color: #cff4fc;
+  color: #055160;
+}
+
+.legal-update-item {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border-left: 4px solid #6c757d;
+  background-color: #f8f9fa;
+}
+
+.legal-update-item:hover {
+  border-left-color: #0d6efd;
+}
+
+.upload-area {
+  border: 2px dashed #6c757d;
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+  margin: 1.5rem 0;
+  cursor: pointer;
+}
+
+.upload-area:hover {
+  border-color: #0d6efd;
+  background-color: #f8f9fa;
+}
