@@ -30,7 +30,10 @@ const AppNavbar = ({ isAuthenticated, user, onLogout }) => {
               <>
                 <Nav.Link as={Link} to="/documents">Documents</Nav.Link>
                 {user && user.role === 'admin' && (
-                  <Nav.Link as={Link} to="/users">Users</Nav.Link>
+                  <>
+                    <Nav.Link as={Link} to="/users">Users</Nav.Link>
+                    <Nav.Link as={Link} to="/admin">Admin Dashboard</Nav.Link>
+                  </>
                 )}
               </>
             )}

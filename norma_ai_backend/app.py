@@ -8,6 +8,7 @@ from models import db
 from routes.auth import auth_bp
 from routes.users import users_bp
 from routes.documents import documents_bp
+from routes.admin import admin_bp
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -39,6 +40,7 @@ def create_app(config_class=Config):
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(users_bp, url_prefix='/api')
     app.register_blueprint(documents_bp, url_prefix='/api')
+    app.register_blueprint(admin_bp, url_prefix='/api')
     
     @app.route('/')
     def index():

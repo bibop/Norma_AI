@@ -94,4 +94,55 @@ export const getLegalUpdates = async () => {
   };
 };
 
+// Admin services
+export const getUsersAdmin = async (page = 1, perPage = 10) => {
+  try {
+    const response = await api.get(`/admin/users?page=${page}&per_page=${perPage}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    throw error;
+  }
+};
+
+export const getUserByIdAdmin = async (userId) => {
+  try {
+    const response = await api.get(`/admin/users/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching user details:', error);
+    throw error;
+  }
+};
+
+export const createUserAdmin = async (userData) => {
+  try {
+    const response = await api.post('/admin/users', userData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating user:', error);
+    throw error;
+  }
+};
+
+export const updateUserAdmin = async (userId, userData) => {
+  try {
+    const response = await api.put(`/admin/users/${userId}`, userData);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating user:', error);
+    throw error;
+  }
+};
+
+export const deleteUserAdmin = async (userId) => {
+  try {
+    const response = await api.delete(`/admin/users/${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    throw error;
+  }
+};
+
 export default api;

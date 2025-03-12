@@ -8,6 +8,7 @@ import Register from './pages/Register';
 import Users from './pages/Users';
 import Documents from './pages/Documents';
 import DocumentDetail from './pages/DocumentDetail';
+import AdminDashboard from './pages/AdminDashboard';
 import { getToken, removeToken } from './utils/tokenUtils';
 import './App.css';
 
@@ -96,6 +97,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <DocumentDetail />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin" 
+            element={
+              <ProtectedRoute>
+                <AdminDashboard />
               </ProtectedRoute>
             } 
           />
