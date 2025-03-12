@@ -1,34 +1,67 @@
 import api from './api';
+import { tokenStorage } from '../utils/tokenUtils';
+import { userStorage } from './api';
 
+/**
+ * Register a new user with the system
+ * @param {Object} userData - User registration data
+ * @returns {Promise<Object>} Response with success status and message
+ */
 export const register = async (userData) => {
   try {
-    return await api.post('/register', userData);
+    const response = await api.post('/register', userData);
+    if (response.success && response.token) {
+      tokenStorage.setToken(response.token);
+      userStorage.setUser(response.user);
+    }
+    return response;
   } catch (error) {
     console.error('Registration error:', error);
-    throw error;
+    return { success: false, message: error.message || 'Registration failed' };
   }
 };
 
+/**
+ * Authenticate user with the system
+ * @param {string} email - User email
+ * @param {string} password - User password
+ * @returns {Promise<Object>} Response with success status, token and user data
+ */
 export const login = async (email, password) => {
   try {
-    return await api.post('/login', { email, password });
+    const response = await api.post('/login', { email, password });
+    if (response.success && response.token) {
+      tokenStorage.setToken(response.token);
+      userStorage.setUser(response.user);
+    }
+    return response;
   } catch (error) {
     console.error('Login error:', error);
-    throw error;
+    return { success: false, message: error.message || 'Login failed' };
   }
 };
 
+/**
+ * Log user out of the system by removing their authentication data
+ */
 export const logout = () => {
-  // JWT is stateless, so we just need to remove the token from local storage
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
+  tokenStorage.removeToken();
+  userStorage.removeUser();
 };
 
+/**
+ * Check if user is currently authenticated
+ * @returns {boolean} True if user is authenticated
+ */
 export const checkAuthStatus = () => {
-  const token = localStorage.getItem('token');
-  if (!token) return false;
-  
-  // In a real application, you might want to validate the token
-  // with the server or check if it's expired
-  return true;
+  const token = tokenStorage.getToken();
+  return !!token;
+};
+
+/**
+ * Get current authenticated user data
+ * @returns {Object|null} User data or null if not authenticated
+ */
+export const getCurrentUser = () => {
+  return userStorage.getUser();
 };

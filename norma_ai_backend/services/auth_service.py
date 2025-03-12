@@ -1,6 +1,11 @@
 import re
 import logging
 
+def validate_email(email):
+    """Validate email format using regex."""
+    email_regex = r'^[a-zA-Z0-9.%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z0-9-]{2,}$'
+    return bool(re.match(email_regex, email))
+
 def validate_registration_data(data):
     """Validate registration data."""
     data_to_log = {k: v for k, v in data.items() if k != 'password'}
@@ -16,8 +21,7 @@ def validate_registration_data(data):
             }
     
     # Validate email format
-    email_regex = r'^[a-zA-Z0-9.%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z0-9-]{2,}$'
-    if not re.match(email_regex, data['email']):
+    if not validate_email(data['email']):
         return {
             "success": False,
             "message": "Invalid email format"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Container, Card, Button, Row, Col, Alert } from 'react-bootstrap';
+import { Container, Card, Button, Row, Col, Alert, Spinner, Pagination } from 'react-bootstrap';
 import { FaUserPlus } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -35,22 +35,37 @@ const AdminDashboard = () => {
   // Fetch users data
   const fetchUsers = useCallback(async (page = 1) => {
     setLoading(true);
+    setError(null);
     try {
       const response = await getUsersAdmin(page);
-      if (response.success) {
-        setUsers(response.users);
-        setTotalPages(response.pagination.total_pages);
-        setCurrentPage(response.pagination.page);
+      console.log("Admin API response:", response);
+      
+      // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
+      if (response?.success) {
+        setUsers(response.users || []);
+        setTotalPages(response.pagination?.total_pages || 1);
+        setCurrentPage(response.pagination?.page || 1);
       } else {
-        setError('Failed to load users');
+        const errorMessage = response?.message || 'Failed to load users';
+        setError(errorMessage);
+        toast.error(errorMessage);
+        setUsers([]);
       }
     } catch (err) {
-      // Check if error is due to unauthorized access
-      if (err.response && err.response.status === 403) {
-        toast.error('You do not have admin privileges to access this page');
-        navigate('/'); // Redirect to home
+      console.error("Error fetching users:", err);
+      
+      // Gestire meglio l'errore per assicurare che abbiamo sempre un messaggio di errore formattato
+      let errorMessage = 'Error loading users';
+      
+      if (err?.response?.status === 403) {
+        errorMessage = 'You do not have admin privileges to access this page';
+        toast.error(errorMessage);
+        navigate('/');
       } else {
-        setError('Error loading users: ' + (err.response?.data?.message || err.message));
+        errorMessage += ': ' + (err?.message || 'Unknown error');
+        toast.error(errorMessage);
+        setError(errorMessage);
+        setUsers([]);
       }
     } finally {
       setLoading(false);
@@ -62,145 +77,228 @@ const AdminDashboard = () => {
     fetchUsers(currentPage);
   }, [currentPage, fetchUsers]);
   
-  // Handler for page change
+  // Handle page change
   const handlePageChange = (page) => {
     setCurrentPage(page);
   };
   
-  // Handle user creation
-  const handleCreateUser = async (userData) => {
-    try {
-      const response = await createUserAdmin(userData);
-      if (response.success) {
-        toast.success('User created successfully');
-        setShowUserForm(false);
-        fetchUsers(currentPage); // Refresh list
-      } else {
-        toast.error(response.message || 'Failed to create user');
-      }
-    } catch (err) {
-      toast.error('Error creating user: ' + (err.response?.data?.message || err.message));
-    }
-  };
-  
-  // Handle editing user
-  const handleEditClick = (user) => {
-    setEditUser(user);
+  // Add new user
+  const handleAddUser = () => {
+    setEditUser(null);
     setShowUserForm(true);
   };
   
-  // Handle user update
-  const handleUpdateUser = async (userData) => {
+  // Edit existing user
+  const handleEditUser = async (userId) => {
     try {
-      const response = await updateUserAdmin(editUser.id, userData);
-      if (response.success) {
-        toast.success('User updated successfully');
-        setShowUserForm(false);
-        setEditUser(null);
-        fetchUsers(currentPage); // Refresh list
+      setLoading(true);
+      const response = await getUserByIdAdmin(userId);
+      
+      // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
+      if (response?.success) {
+        // Remove password from edit form
+        const userData = { ...response.user };
+        delete userData.password;
+        setEditUser(userData);
+        setShowUserForm(true);
       } else {
-        toast.error(response.message || 'Failed to update user');
+        const errorMessage = response?.message || 'Failed to load user details';
+        toast.error(errorMessage);
       }
     } catch (err) {
-      toast.error('Error updating user: ' + (err.response?.data?.message || err.message));
+      console.error("Error loading user details:", err);
+      
+      // Gestire meglio l'errore per assicurare che abbiamo sempre un messaggio di errore formattato
+      let errorMessage = 'Error loading user details';
+      
+      if (err?.response?.status === 403) {
+        errorMessage = 'You do not have admin privileges to access this page';
+        toast.error(errorMessage);
+        navigate('/');
+      } else {
+        errorMessage += ': ' + (err?.message || 'Unknown error');
+        toast.error(errorMessage);
+      }
+    } finally {
+      setLoading(false);
     }
   };
   
-  // Handle form submission (create or update)
-  const handleSubmitUserForm = (formData) => {
-    if (editUser) {
-      handleUpdateUser(formData);
-    } else {
-      handleCreateUser(formData);
-    }
-  };
-  
-  // Handle delete user click
-  const handleDeleteClick = (userId) => {
-    // Find user in list to show name in confirmation
-    const user = users.find(u => u.id === userId);
+  // Delete user
+  const handleDeleteUser = (user) => {
     setUserToDelete(user);
     setShowDeleteModal(true);
   };
   
-  // Handle confirm delete
-  const handleConfirmDelete = async () => {
+  // Change user role
+  const handleChangeRole = async (userId, currentRole) => {
     try {
-      const response = await deleteUserAdmin(userToDelete.id);
-      if (response.success) {
-        toast.success('User deleted successfully');
-        setShowDeleteModal(false);
-        setUserToDelete(null);
-        
-        // If we're on the last page and deleted the last user, go to previous page
-        if (users.length === 1 && currentPage > 1) {
-          setCurrentPage(currentPage - 1);
-        } else {
-          fetchUsers(currentPage); // Refresh list
-        }
+      const newRole = currentRole === 'admin' ? 'user' : 'admin';
+      const response = await updateUserAdmin(userId, { role: newRole });
+      
+      // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
+      if (response?.success) {
+        toast.success(`User role changed to ${newRole} successfully`);
+        fetchUsers(currentPage);
       } else {
-        toast.error(response.message || 'Failed to delete user');
+        const errorMessage = response?.message || 'Failed to change user role';
+        toast.error(errorMessage);
       }
     } catch (err) {
-      toast.error('Error deleting user: ' + (err.response?.data?.message || err.message));
+      console.error("Error changing user role:", err);
+      
+      // Gestire meglio l'errore per assicurare che abbiamo sempre un messaggio di errore formattato
+      let errorMessage = 'Error changing user role';
+      
+      if (err?.response?.status === 403) {
+        errorMessage = 'You do not have admin privileges to access this page';
+        toast.error(errorMessage);
+        navigate('/');
+      } else {
+        errorMessage += ': ' + (err?.message || 'Unknown error');
+        toast.error(errorMessage);
+      }
     }
   };
   
-  // Handle role change
-  const handleRoleChange = async (userId, newRole) => {
+  // Submit user form
+  const handleUserFormSubmit = async (userData) => {
     try {
-      const userData = { role: newRole };
-      const response = await updateUserAdmin(userId, userData);
-      if (response.success) {
-        toast.success(`User role updated to ${newRole}`);
-        fetchUsers(currentPage); // Refresh list
+      let response;
+      
+      if (editUser) {
+        // Update existing user
+        response = await updateUserAdmin(editUser.id, userData);
+        
+        // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
+        if (response?.success) {
+          toast.success('User updated successfully');
+        } else {
+          const errorMessage = response?.message || 'Failed to update user';
+          throw new Error(errorMessage);
+        }
       } else {
-        toast.error(response.message || 'Failed to update user role');
+        // Create new user
+        response = await createUserAdmin(userData);
+        
+        // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
+        if (response?.success) {
+          toast.success('User created successfully');
+        } else {
+          const errorMessage = response?.message || 'Failed to create user';
+          throw new Error(errorMessage);
+        }
+      }
+      
+      // Close form and refresh users list
+      setShowUserForm(false);
+      fetchUsers(currentPage);
+    } catch (err) {
+      console.error("Error saving user:", err);
+      
+      // Gestire meglio l'errore per assicurare che abbiamo sempre un messaggio di errore formattato
+      let errorMessage = 'Error saving user';
+      
+      if (err?.response?.status === 403) {
+        errorMessage = 'You do not have admin privileges to access this page';
+        toast.error(errorMessage);
+        navigate('/');
+      } else {
+        errorMessage += ': ' + (err?.message || 'Unknown error');
+        toast.error(errorMessage);
+      }
+    }
+  };
+  
+  // Confirm delete user
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    
+    try {
+      const response = await deleteUserAdmin(userToDelete.id);
+      
+      // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
+      if (response?.success) {
+        toast.success('User deleted successfully');
+        setShowDeleteModal(false);
+        fetchUsers(currentPage);
+      } else {
+        const errorMessage = response?.message || 'Failed to delete user';
+        throw new Error(errorMessage);
       }
     } catch (err) {
-      toast.error('Error updating user role: ' + (err.response?.data?.message || err.message));
+      console.error("Error deleting user:", err);
+      
+      // Gestire meglio l'errore per assicurare che abbiamo sempre un messaggio di errore formattato
+      let errorMessage = 'Error deleting user';
+      
+      if (err?.response?.status === 403) {
+        errorMessage = 'You do not have admin privileges to access this page';
+        toast.error(errorMessage);
+        navigate('/');
+      } else {
+        errorMessage += ': ' + (err?.message || 'Unknown error');
+        toast.error(errorMessage);
+      }
     }
   };
   
   return (
     <Container className="py-4">
-      <h1 className="mb-4">User Administration</h1>
-      
-      {error && (
-        <Alert variant="danger">{error}</Alert>
-      )}
-      
-      <Card className="mb-4">
-        <Card.Header className="bg-light">
+      <Card>
+        <Card.Header className="bg-primary text-white">
           <Row className="align-items-center">
             <Col>
-              <h5 className="mb-0">User Management</h5>
+              <h4 className="mb-0">User Management</h4>
             </Col>
             <Col xs="auto">
               <Button 
-                variant="primary" 
-                onClick={() => {
-                  setEditUser(null);
-                  setShowUserForm(true);
-                }}
+                variant="light" 
+                className="d-flex align-items-center" 
+                onClick={handleAddUser}
               >
                 <FaUserPlus className="me-2" />
-                Add New User
+                Add User
               </Button>
             </Col>
           </Row>
         </Card.Header>
         <Card.Body>
-          <UserTable 
-            users={users}
-            loading={loading}
-            totalPages={totalPages}
-            currentPage={currentPage}
-            onPageChange={handlePageChange}
-            onEdit={handleEditClick}
-            onDelete={handleDeleteClick}
-            onChangeRole={handleRoleChange}
-          />
+          {error && (
+            <Alert variant="danger">{error}</Alert>
+          )}
+          
+          {loading && users.length === 0 ? (
+            <div className="text-center py-5">
+              <Spinner animation="border" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </Spinner>
+            </div>
+          ) : (
+            <>
+              <UserTable 
+                users={users}
+                loading={loading}
+                totalPages={totalPages}
+                currentPage={currentPage}
+                onPageChange={handlePageChange}
+                onEdit={handleEditUser}
+                onDelete={handleDeleteUser}
+                onChangeRole={handleChangeRole}
+              />
+              <Pagination>
+                {[...Array(totalPages).keys()].map((page) => (
+                  <Pagination.Item 
+                    key={page} 
+                    active={currentPage === page + 1} 
+                    onClick={() => handlePageChange(page + 1)}
+                  >
+                    {page + 1}
+                  </Pagination.Item>
+                ))}
+              </Pagination>
+            </>
+          )}
         </Card.Body>
       </Card>
       
@@ -208,22 +306,15 @@ const AdminDashboard = () => {
       <UserForm 
         show={showUserForm}
         user={editUser}
-        isEdit={!!editUser}
-        onHide={() => {
-          setShowUserForm(false);
-          setEditUser(null);
-        }}
-        onSubmit={handleSubmitUserForm}
+        onClose={() => setShowUserForm(false)}
+        onSubmit={handleUserFormSubmit}
       />
       
       {/* Delete Confirmation Modal */}
       <DeleteConfirmation 
         show={showDeleteModal}
-        userName={userToDelete ? `${userToDelete.first_name} ${userToDelete.last_name}` : ''}
-        onHide={() => {
-          setShowDeleteModal(false);
-          setUserToDelete(null);
-        }}
+        user={userToDelete}
+        onClose={() => setShowDeleteModal(false)}
         onConfirm={handleConfirmDelete}
       />
     </Container>

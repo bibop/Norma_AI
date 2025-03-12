@@ -4,6 +4,7 @@ Script to create an admin user in the database.
 from app import create_app
 from models import db
 from models.user import User
+import argparse
 
 def create_admin_user(email, password, first_name, last_name, company=None):
     """Create an admin user in the database."""
@@ -44,17 +45,22 @@ def create_admin_user(email, password, first_name, last_name, company=None):
         return admin
 
 if __name__ == "__main__":
-    # Admin details - these will be used to create the admin user
-    admin_email = "admin@norma-ai.com"
-    admin_password = "admin123456"  # Remember to change this in production!
-    admin_first_name = "Admin"
-    admin_last_name = "User"
-    admin_company = "Norma AI"
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Create an admin user')
+    parser.add_argument('--email', type=str, default="admin@norma-ai.com", help='Admin email')
+    parser.add_argument('--password', type=str, default="admin123456", help='Admin password')
+    parser.add_argument('--first_name', type=str, default="Admin", help='Admin first name')
+    parser.add_argument('--last_name', type=str, default="User", help='Admin last name')
+    parser.add_argument('--company', type=str, default=None, help='Admin company (optional)')
     
+    # Parse arguments
+    args = parser.parse_args()
+    
+    # Create admin user with provided arguments
     create_admin_user(
-        email=admin_email,
-        password=admin_password,
-        first_name=admin_first_name,
-        last_name=admin_last_name,
-        company=admin_company
+        email=args.email,
+        password=args.password,
+        first_name=args.first_name,
+        last_name=args.last_name,
+        company=args.company
     )

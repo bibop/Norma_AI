@@ -9,7 +9,9 @@ import Users from './pages/Users';
 import Documents from './pages/Documents';
 import DocumentDetail from './pages/DocumentDetail';
 import AdminDashboard from './pages/AdminDashboard';
+import Profile from './pages/Profile';
 import { getToken, removeToken } from './utils/tokenUtils';
+import cookieStorage from './utils/cookieStorage';
 import './App.css';
 
 function App() {
@@ -21,23 +23,28 @@ function App() {
     const token = getToken();
     if (token) {
       setIsAuthenticated(true);
-      // Load user data from local storage if available
-      const storedUser = localStorage.getItem('user');
+      // Load user data from cookie storage if available
+      const storedUser = cookieStorage.getItem('user');
       if (storedUser) {
-        setUser(JSON.parse(storedUser));
+        try {
+          setUser(JSON.parse(storedUser));
+        } catch (e) {
+          console.error('Error parsing user data:', e);
+          setUser(null);
+        }
       }
     }
   }, []);
 
   const handleLogin = (userData, token) => {
-    localStorage.setItem('user', JSON.stringify(userData));
+    cookieStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
     setIsAuthenticated(true);
   };
 
   const handleLogout = () => {
     removeToken();
-    localStorage.removeItem('user');
+    cookieStorage.removeItem('user');
     setUser(null);
     setIsAuthenticated(false);
   };
@@ -105,6 +112,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AdminDashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/profile" 
+            element={
+              <ProtectedRoute>
+                <Profile />
               </ProtectedRoute>
             } 
           />

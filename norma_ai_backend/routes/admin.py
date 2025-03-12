@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
-from models import db, User
+from models import db
+from models.user import User
 from services.auth_middleware import admin_required
 from services.auth_service import validate_registration_data
 

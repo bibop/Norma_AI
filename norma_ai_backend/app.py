@@ -3,16 +3,31 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
+from dotenv import load_dotenv
 from config import Config
 from models import db
 from routes.auth import auth_bp
 from routes.users import users_bp
 from routes.documents import documents_bp
 from routes.admin import admin_bp
+from routes.profile import profile_bp
+
+# Load environment variables from .env file if it exists
+load_dotenv()
 
 def create_app(config_class=Config):
     app = Flask(__name__)
-    app.config.from_object(config_class)
+    app_env = os.environ.get('FLASK_ENV', 'development')
+    if app_env == 'production':
+        # Use DATABASE_URL from environment (provided by Render)
+        app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+        app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'production-secret-key')
+        app.config['DEBUG'] = False
+    else:
+        # Local development configuration
+        app.config.from_object(config_class)
+    
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Initialize extensions
     db.init_app(app)
@@ -41,6 +56,7 @@ def create_app(config_class=Config):
     app.register_blueprint(users_bp, url_prefix='/api')
     app.register_blueprint(documents_bp, url_prefix='/api')
     app.register_blueprint(admin_bp, url_prefix='/api')
+    app.register_blueprint(profile_bp, url_prefix='/api')
     
     @app.route('/')
     def index():
@@ -59,8 +75,6 @@ def test():
     return {"message": "API is working!"}
 
 if __name__ == '__main__':
-    # Abilita la modalità debug molto dettagliata
-    import logging
-    logging.basicConfig(level=logging.DEBUG)
-    
-    app.run(debug=True, port=5001)
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True, host='0.0.0.0', port=5001)

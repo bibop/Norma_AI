@@ -67,7 +67,10 @@ const UserTable = ({ users, loading, totalPages, currentPage, onPageChange, onEd
                       <Button 
                         variant="outline-primary" 
                         size="sm" 
-                        onClick={() => onEdit(user)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEdit(user);
+                        }}
                         title="Edit user"
                       >
                         <FaEdit />
@@ -75,7 +78,10 @@ const UserTable = ({ users, loading, totalPages, currentPage, onPageChange, onEd
                       <Button 
                         variant="outline-danger" 
                         size="sm" 
-                        onClick={() => onDelete(user.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDelete(user.id);
+                        }}
                         title="Delete user"
                       >
                         <FaTrash />
@@ -83,7 +89,10 @@ const UserTable = ({ users, loading, totalPages, currentPage, onPageChange, onEd
                       <Button 
                         variant={user.role === 'admin' ? "outline-secondary" : "outline-danger"} 
                         size="sm" 
-                        onClick={() => onChangeRole(user.id, user.role === 'admin' ? 'user' : 'admin')}
+                        onClick={(e) => {
+                          e.stopPropagation(); 
+                          onChangeRole(user.id, user.role === 'admin' ? 'user' : 'admin');
+                        }}
                         title={user.role === 'admin' ? "Demote to user" : "Promote to admin"}
                       >
                         {user.role === 'admin' ? <FaUser /> : <FaUserShield />}

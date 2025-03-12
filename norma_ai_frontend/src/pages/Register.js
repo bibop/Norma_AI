@@ -181,6 +181,7 @@ const Register = ({ onRegisterSuccess }) => {
               value={formData.password}
               onChange={handleChange}
               isInvalid={!!errors.password}
+              autoComplete="new-password"
             />
             <Form.Control.Feedback type="invalid">
               {errors.password}
@@ -199,6 +200,7 @@ const Register = ({ onRegisterSuccess }) => {
               value={formData.confirmPassword}
               onChange={handleChange}
               isInvalid={!!errors.confirmPassword}
+              autoComplete="new-password"
             />
             <Form.Control.Feedback type="invalid">
               {errors.confirmPassword}

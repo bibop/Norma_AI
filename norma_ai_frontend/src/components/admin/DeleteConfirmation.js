@@ -1,9 +1,11 @@
 import React from 'react';
 import { Modal, Button } from 'react-bootstrap';
 
-const DeleteConfirmation = ({ show, onHide, onConfirm, userName }) => {
+const DeleteConfirmation = ({ show, onClose, onConfirm, user }) => {
+  const userName = user ? `${user.first_name} ${user.last_name}` : '';
+  
   return (
-    <Modal show={show} onHide={onHide} centered>
+    <Modal show={show} onHide={onClose} centered>
       <Modal.Header closeButton>
         <Modal.Title>Confirm Delete</Modal.Title>
       </Modal.Header>
@@ -16,7 +18,7 @@ const DeleteConfirmation = ({ show, onHide, onConfirm, userName }) => {
         </p>
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="secondary" onClick={onHide}>
+        <Button variant="secondary" onClick={onClose}>
           Cancel
         </Button>
         <Button variant="danger" onClick={onConfirm}>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Form, Button, Modal, Row, Col } from 'react-bootstrap';
 
-const UserForm = ({ show, user, onHide, onSubmit, isEdit }) => {
+const UserForm = ({ show, user, onClose, onSubmit }) => {
   const initialFormState = {
     email: '',
     first_name: '',
@@ -14,7 +14,7 @@ const UserForm = ({ show, user, onHide, onSubmit, isEdit }) => {
 
   const [formData, setFormData] = useState(initialFormState);
   const [validated, setValidated] = useState(false);
-  const [showPassword, setShowPassword] = useState(!isEdit);
+  const [showPassword, setShowPassword] = useState(!user);
 
   useEffect(() => {
     if (user) {
@@ -70,9 +70,9 @@ const UserForm = ({ show, user, onHide, onSubmit, isEdit }) => {
   };
 
   return (
-    <Modal show={show} onHide={onHide} size="lg" centered>
+    <Modal show={show} onHide={onClose} size="lg" centered>
       <Modal.Header closeButton>
-        <Modal.Title>{isEdit ? 'Edit User' : 'Create New User'}</Modal.Title>
+        <Modal.Title>{!user ? 'Create New User' : 'Edit User'}</Modal.Title>
       </Modal.Header>
       <Modal.Body>
         <Form noValidate validated={validated} onSubmit={handleSubmit}>
@@ -155,7 +155,7 @@ const UserForm = ({ show, user, onHide, onSubmit, isEdit }) => {
             />
           </Form.Group>
 
-          {isEdit && (
+          {!user && (
             <Form.Group className="mb-3">
               <Form.Check
                 type="checkbox"
@@ -179,6 +179,7 @@ const UserForm = ({ show, user, onHide, onSubmit, isEdit }) => {
                     required={showPassword}
                     placeholder="Password"
                     minLength={6}
+                    autoComplete="new-password"
                   />
                   <Form.Control.Feedback type="invalid">
                     Password must be at least 6 characters.
@@ -195,6 +196,7 @@ const UserForm = ({ show, user, onHide, onSubmit, isEdit }) => {
                     onChange={handleChange}
                     required={showPassword}
                     placeholder="Confirm Password"
+                    autoComplete="new-password"
                     isInvalid={
                       formData.password !== formData.password_confirm &&
                       formData.password_confirm !== ''
@@ -209,11 +211,11 @@ const UserForm = ({ show, user, onHide, onSubmit, isEdit }) => {
           )}
 
           <div className="d-flex justify-content-end">
-            <Button variant="secondary" onClick={onHide} className="me-2">
+            <Button variant="secondary" onClick={onClose} className="me-2">
               Cancel
             </Button>
             <Button variant="primary" type="submit">
-              {isEdit ? 'Save Changes' : 'Create User'}
+              {!user ? 'Create User' : 'Save Changes'}
             </Button>
           </div>
         </Form>

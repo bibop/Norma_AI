@@ -44,6 +44,9 @@ const AppNavbar = ({ isAuthenticated, user, onLogout }) => {
                 <Nav.Item className="d-flex align-items-center me-3">
                   <span>Welcome, {user ? user.first_name : 'User'}</span>
                 </Nav.Item>
+                <Nav.Link as={Link} to="/profile" className="me-2">
+                  My Profile
+                </Nav.Link>
                 <Button variant="outline-primary" onClick={handleLogout}>
                   Logout
                 </Button>

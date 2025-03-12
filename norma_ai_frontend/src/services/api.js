@@ -1,15 +1,59 @@
 import axios from 'axios';
-import { getToken } from '../utils/tokenUtils';
+import { tokenStorage } from '../utils/tokenUtils';
+import cookieStorage from '../utils/cookieStorage';
+
+// API server URL - configurable based on environment variables
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
 // Create an axios instance with base URL
 const api = axios.create({
-  baseURL: 'http://localhost:5001/api'
+  baseURL: API_BASE_URL
 });
+
+// Shared user data storage with memory fallback
+export const userStorage = {
+  inMemoryUser: null,
+  setUser: (userData) => {
+    // Always set in memory first
+    userStorage.inMemoryUser = userData;
+    try {
+      cookieStorage.setItem('user', JSON.stringify(userData));
+    } catch (error) {
+      console.warn('Error storing user data in cookies, using memory fallback');
+    }
+  },
+  getUser: () => {
+    try {
+      const userData = cookieStorage.getItem('user');
+      if (userData) {
+        try {
+          const parsedUser = JSON.parse(userData);
+          userStorage.inMemoryUser = parsedUser; // Update memory cache
+          return parsedUser;
+        } catch (e) {
+          console.warn('Error parsing user data from cookies');
+        }
+      }
+      return userStorage.inMemoryUser;
+    } catch (error) {
+      console.warn('Error accessing user data from cookies, using memory fallback');
+      return userStorage.inMemoryUser;
+    }
+  },
+  removeUser: () => {
+    userStorage.inMemoryUser = null;
+    try {
+      cookieStorage.removeItem('user');
+    } catch (error) {
+      console.warn('Error removing user data from cookies');
+    }
+  }
+};
 
 // Add a request interceptor to inject the JWT token
 api.interceptors.request.use(
   (config) => {
-    const token = getToken();
+    const token = tokenStorage.getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -23,13 +67,20 @@ api.interceptors.request.use(
 // Add a response interceptor to handle errors
 api.interceptors.response.use(
   (response) => {
+    // Handle missing response.data
+    if (!response.data) {
+      console.warn('Empty response data received from server');
+      return { success: false, message: 'No data received from server' };
+    }
     return response.data;
   },
   (error) => {
+    console.error('API Error:', error);
+    
     // Handle unauthorized errors (token expired or invalid)
     if (error.response && error.response.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      tokenStorage.removeToken();
+      userStorage.removeUser();
       
       // Redirect to login page if not already there
       if (window.location.pathname !== '/login') {
@@ -37,9 +88,11 @@ api.interceptors.response.use(
       }
     }
     
-    return Promise.reject(
-      error.response ? error.response.data : { message: error.message }
-    );
+    // Return a formatted error object
+    return Promise.reject(error.response?.data || { 
+      success: false, 
+      message: error.message || 'An error occurred'
+    });
   }
 );
 
@@ -49,7 +102,7 @@ export const getUsers = async () => {
     return await api.get('/users');
   } catch (error) {
     console.error('Error fetching users:', error);
-    throw error;
+    return { success: false, message: error.message || 'Error fetching users' };
   }
 };
 
@@ -97,51 +150,65 @@ export const getLegalUpdates = async () => {
 // Admin services
 export const getUsersAdmin = async (page = 1, perPage = 10) => {
   try {
-    const response = await api.get(`/admin/users?page=${page}&per_page=${perPage}`);
-    return response.data;
+    return await api.get(`/admin/users?page=${page}&per_page=${perPage}`);
   } catch (error) {
     console.error('Error fetching users:', error);
-    throw error;
+    return { success: false, message: error.message || 'Error fetching users' };
   }
 };
 
 export const getUserByIdAdmin = async (userId) => {
   try {
-    const response = await api.get(`/admin/users/${userId}`);
-    return response.data;
+    return await api.get(`/admin/users/${userId}`);
   } catch (error) {
     console.error('Error fetching user details:', error);
-    throw error;
+    return { success: false, message: error.message || 'Error fetching user details' };
   }
 };
 
 export const createUserAdmin = async (userData) => {
   try {
-    const response = await api.post('/admin/users', userData);
-    return response.data;
+    return await api.post('/admin/users', userData);
   } catch (error) {
     console.error('Error creating user:', error);
-    throw error;
+    return { success: false, message: error.message || 'Error creating user' };
   }
 };
 
 export const updateUserAdmin = async (userId, userData) => {
   try {
-    const response = await api.put(`/admin/users/${userId}`, userData);
-    return response.data;
+    return await api.put(`/admin/users/${userId}`, userData);
   } catch (error) {
     console.error('Error updating user:', error);
-    throw error;
+    return { success: false, message: error.message || 'Error updating user' };
   }
 };
 
 export const deleteUserAdmin = async (userId) => {
   try {
-    const response = await api.delete(`/admin/users/${userId}`);
-    return response.data;
+    return await api.delete(`/admin/users/${userId}`);
   } catch (error) {
     console.error('Error deleting user:', error);
-    throw error;
+    return { success: false, message: error.message || 'Error deleting user' };
+  }
+};
+
+// Profile services
+export const getUserProfile = async () => {
+  try {
+    return await api.get('/profile');
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    return { success: false, message: error.message || 'Error fetching profile' };
+  }
+};
+
+export const updateUserProfile = async (profileData) => {
+  try {
+    return await api.put('/profile', profileData);
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    return { success: false, message: error.message || 'Error updating profile' };
   }
 };
 

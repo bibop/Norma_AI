@@ -49,6 +49,5 @@ class User(db.Model):
             'company': self.company,
             'role': self.role,
             'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-            'password_hash': self.password_hash  # For debugging purposes
+            'updated_at': self.updated_at.isoformat()
         }

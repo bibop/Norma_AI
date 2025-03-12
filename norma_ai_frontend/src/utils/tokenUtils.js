@@ -1,13 +1,59 @@
+import cookieStorage from './cookieStorage';
+
+// Shared in-memory token storage for contexts where cookies are not available
+export const tokenStorage = {
+  inMemoryToken: null,
+  setToken: (token) => {
+    // Always set in-memory first
+    tokenStorage.inMemoryToken = token;
+    
+    // Try to set in cookie storage
+    try {
+      cookieStorage.setItem('token', token);
+    } catch (error) {
+      console.warn('Error saving token to cookie storage, using in-memory only');
+    }
+  },
+  getToken: () => {
+    try {
+      // Try to get from cookie storage first
+      const token = cookieStorage.getItem('token');
+      if (token) {
+        // Update in-memory cache
+        tokenStorage.inMemoryToken = token;
+        return token;
+      }
+      // Fall back to in-memory
+      return tokenStorage.inMemoryToken;
+    } catch (error) {
+      console.warn('Error accessing token in cookie storage, using in-memory fallback');
+      return tokenStorage.inMemoryToken;
+    }
+  },
+  removeToken: () => {
+    // Clear in-memory first
+    tokenStorage.inMemoryToken = null;
+    
+    // Try to remove from cookie storage
+    try {
+      cookieStorage.removeItem('token');
+    } catch (error) {
+      console.warn('Error removing token from cookie storage');
+    }
+  }
+};
+
+// Public API
 export const saveToken = (token) => {
-  localStorage.setItem('token', token);
+  tokenStorage.setToken(token);
 };
 
 export const getToken = () => {
-  return localStorage.getItem('token');
+  return tokenStorage.getToken();
 };
 
 export const removeToken = () => {
-  localStorage.removeItem('token');
+  tokenStorage.removeToken();
 };
 
 export const isTokenExpired = (token) => {
@@ -27,8 +73,8 @@ export const isTokenExpired = (token) => {
     const currentDate = new Date();
     
     return currentDate > expirationDate;
-  } catch (error) {
-    console.error('Error checking token expiration:', error);
-    return true; // Assume the token is expired if there's an error
+  } catch (e) {
+    console.error('Error checking token expiration:', e);
+    return true; // Assume token is expired if we can't check
   }
 };
