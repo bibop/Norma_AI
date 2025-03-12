@@ -12,7 +12,7 @@ documents_bp = Blueprint('documents', __name__)
 @jwt_required()
 def upload_document():
     """Upload a document for compliance analysis."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())  # Manteniamo questa conversione
     
     # Check if the request has a file
     if 'file' not in request.files:
@@ -72,7 +72,7 @@ def upload_document():
 @jwt_required()
 def get_documents():
     """Get all documents for the current user."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())  # Manteniamo questa conversione
     
     # Get all documents for the user
     user_documents = Document.query.filter_by(user_id=user_id).all()
@@ -88,7 +88,7 @@ def get_documents():
 @jwt_required()
 def get_document_compliance(document_id):
     """Get compliance details for a specific document."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())  # Manteniamo questa conversione
     
     # Find the document
     document = Document.query.filter_by(id=document_id, user_id=user_id).first()

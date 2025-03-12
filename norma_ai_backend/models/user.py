@@ -20,16 +20,24 @@ class User(db.Model):
     documents = db.relationship('Document', backref='owner', lazy=True)
     
     def set_password(self, password):
-        """Hash the password and store it in the database."""
-        salt = current_app.config['PASSWORD_SALT'].encode('utf-8')
-        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+        """Hash the password and store it in the database.
+        
+        Genera automaticamente un salt sicuro e crea un hash della password.
+        """
+        # Generiamo un salt sicuro e lasciamo che bcrypt lo gestisca internamente
+        hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(12))
         self.password_hash = hashed.decode('utf-8')
     
     def check_password(self, password):
-        """Check if the password matches the hashed password in the database."""
-        salt = current_app.config['PASSWORD_SALT'].encode('utf-8')
-        return bcrypt.checkpw(password.encode('utf-8'), 
-                             self.password_hash.encode('utf-8'))
+        """Check if the password matches the hashed password in the database.
+        
+        Verifica se la password fornita corrisponde all'hash memorizzato.
+        """
+        # bcrypt gestisce internamente l'estrazione del salt dall'hash
+        return bcrypt.checkpw(
+            password.encode('utf-8'),
+            self.password_hash.encode('utf-8')
+        )
     
     def to_dict(self):
         """Convert user object to dictionary."""

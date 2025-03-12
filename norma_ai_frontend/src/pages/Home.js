@@ -12,9 +12,12 @@ const Home = () => {
         <p className="lead">
           The Italian law compliance management solution for modern businesses
         </p>
-        <p className="mb-4">
+        <p className="mb-2">
           NORMA AI helps businesses ensure compliance with Italian legal requirements by analyzing documents,
           providing legal updates, and identifying potential compliance issues.
+        </p>
+        <p className="mb-4 text-info fw-bold">
+          Test Version for David Michael
         </p>
         <div className="d-grid gap-2 d-sm-flex justify-content-sm-center">
           <Link to="/register">

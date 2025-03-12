@@ -16,7 +16,7 @@ def validate_registration_data(data):
             }
     
     # Validate email format
-    email_regex = r'^[a-zA-Z0-9.%+-]+@[a-zA-Z0-9.-]+.[a-zA-Z]{2,}(?:.[a-zA-Z]{2,})*$'
+    email_regex = r'^[a-zA-Z0-9.%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z0-9-]{2,}$'
     if not re.match(email_regex, data['email']):
         return {
             "success": False,
