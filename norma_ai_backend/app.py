@@ -20,7 +20,12 @@ def create_app(config_class=Config):
     app_env = os.environ.get('FLASK_ENV', 'development')
     if app_env == 'production':
         # Use DATABASE_URL from environment (provided by Render)
-        app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+        database_url = os.environ.get('DATABASE_URL')
+        # Render provides PostgreSQL connection string starting with 'postgres://'
+        # but SQLAlchemy expects 'postgresql://'
+        if database_url and database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
         app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'production-secret-key')
         app.config['DEBUG'] = False
     else:
