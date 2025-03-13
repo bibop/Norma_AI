@@ -1,86 +1,123 @@
 import axios from 'axios';
-import { tokenStorage } from '../utils/tokenUtils';
-import cookieStorage from '../utils/cookieStorage';
+import { getToken } from '../utils/tokenUtils';
+import { shouldUseOfflineMode, getMockData, markBackendUnavailable } from '../utils/offlineMode';
 
-// API server URL - configurable based on environment variables
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+// Always use direct IP address to avoid IPv6 resolution issues
+const API_URL = 'http://127.0.0.1:3001/api';
 
-// Create an axios instance with base URL
+console.log('Using direct API URL:', API_URL);
+
+// Create axios instance with the direct IP address
 const api = axios.create({
-  baseURL: API_BASE_URL
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  },
+  withCredentials: true,
+  timeout: 15000 // Reasonable timeout to detect network issues
 });
 
-// Shared user data storage with memory fallback
-export const userStorage = {
-  inMemoryUser: null,
-  setUser: (userData) => {
-    // Always set in memory first
-    userStorage.inMemoryUser = userData;
-    try {
-      cookieStorage.setItem('user', JSON.stringify(userData));
-    } catch (error) {
-      console.warn('Error storing user data in cookies, using memory fallback');
-    }
+// Reset any previously saved API configurations
+localStorage.removeItem('api_config');
+
+// Define API endpoints
+const endpoints = {
+  login: '/auth/login',
+  logout: '/auth/logout',
+  register: '/auth/register',
+  refreshToken: '/auth/refresh',
+  forgotPassword: '/auth/forgot-password',
+  resetPassword: '/auth/reset-password',
+  verifyEmail: '/auth/verify-email',
+  users: '/users',
+  documents: '/documents',
+  search: '/search',
+  upload: '/upload',
+};
+
+// Helper for API methods
+const apiMethods = {
+  get: async (url, params = {}) => {
+    return api.get(url, { params });
   },
-  getUser: () => {
-    try {
-      const userData = cookieStorage.getItem('user');
-      if (userData) {
-        try {
-          const parsedUser = JSON.parse(userData);
-          userStorage.inMemoryUser = parsedUser; // Update memory cache
-          return parsedUser;
-        } catch (e) {
-          console.warn('Error parsing user data from cookies');
-        }
-      }
-      return userStorage.inMemoryUser;
-    } catch (error) {
-      console.warn('Error accessing user data from cookies, using memory fallback');
-      return userStorage.inMemoryUser;
-    }
+  post: async (url, data = {}) => {
+    return api.post(url, data);
   },
-  removeUser: () => {
-    userStorage.inMemoryUser = null;
-    try {
-      cookieStorage.removeItem('user');
-    } catch (error) {
-      console.warn('Error removing user data from cookies');
-    }
-  }
+  put: async (url, data = {}) => {
+    return api.put(url, data);
+  },
+  delete: async (url) => {
+    return api.delete(url);
+  },
+  upload: async (url, file, onProgress) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return api.post(url, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (e) => {
+        const progress = Math.round((e.loaded * 100) / e.total);
+        if (onProgress) onProgress(progress);
+      },
+    });
+  },
 };
 
 // Add a request interceptor to inject the JWT token
 api.interceptors.request.use(
   (config) => {
-    const token = tokenStorage.getToken();
+    console.log('API Request:', config.method.toUpperCase(), config.url);
+    
+    const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
   (error) => {
+    console.error('Request error:', error);
     return Promise.reject(error);
   }
 );
 
-// Add a response interceptor to handle errors
+// Add a response interceptor to handle errors and normalize response format
 api.interceptors.response.use(
   (response) => {
-    // Handle missing response.data
-    if (!response.data) {
-      console.warn('Empty response data received from server');
-      return { success: false, message: 'No data received from server' };
-    }
+    console.log('API Response success:', response.status, response.config.url);
+    // Return the data directly
     return response.data;
   },
   (error) => {
     console.error('API Error:', error);
     
+    // Network errors (no response from server)
+    if (!error.response) {
+      console.error('Network error details:', {
+        message: error.message,
+        config: error.config ? {
+          url: error.config.url,
+          method: error.config.method,
+          baseURL: error.config.baseURL
+        } : 'No config'
+      });
+      
+      markBackendUnavailable(); // Mark backend as unavailable for offline mode
+      
+      return Promise.reject({
+        success: false,
+        isNetworkError: true,
+        message: 'SERVER IS UNREACHABLE. Please check the connection',
+        status: 'network_error'
+      });
+    }
+    
     // Handle unauthorized errors (token expired or invalid)
-    if (error.response && error.response.status === 401) {
-      tokenStorage.removeToken();
-      userStorage.removeUser();
+    if (error.response.status === 401) {
+      // Remove token
+      localStorage.removeItem('token');
       
       // Redirect to login page if not already there
       if (window.location.pathname !== '/login') {
@@ -89,127 +126,304 @@ api.interceptors.response.use(
     }
     
     // Return a formatted error object
-    return Promise.reject(error.response?.data || { 
+    if (error.response.data) {
+      return Promise.reject(error.response.data);
+    }
+    
+    return Promise.reject({ 
       success: false, 
       message: error.message || 'An error occurred'
     });
   }
 );
 
-// API Endpoints
+// Shared user data storage with memory fallback
+export const userStorage = {
+  inMemoryUser: null,
+  setUser: (userData) => {
+    // Always set in memory first
+    userStorage.inMemoryUser = userData;
+    try {
+      localStorage.setItem('user', JSON.stringify(userData));
+    } catch (error) {
+      console.warn('Error storing user data in local storage, using memory fallback');
+    }
+  },
+  getUser: () => {
+    try {
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        try {
+          const parsedUser = JSON.parse(userData);
+          userStorage.inMemoryUser = parsedUser; // Update memory cache
+          return parsedUser;
+        } catch (e) {
+          console.warn('Error parsing user data from local storage');
+        }
+      }
+      return userStorage.inMemoryUser;
+    } catch (error) {
+      console.warn('Error accessing user data from local storage, using memory fallback');
+      return userStorage.inMemoryUser;
+    }
+  },
+  removeUser: () => {
+    userStorage.inMemoryUser = null;
+    try {
+      localStorage.removeItem('user');
+    } catch (error) {
+      console.warn('Error removing user data from local storage');
+    }
+  }
+};
+
+// Utility function for retrying API calls with exponential backoff
+export const retryRequest = async (requestFn, maxRetries = 3) => {
+  let retries = 0;
+  while (retries < maxRetries) {
+    try {
+      return await requestFn();
+    } catch (error) {
+      retries++;
+      if (retries >= maxRetries || !error.isNetworkError) {
+        throw error;
+      }
+      console.log(`Retrying request (${retries}/${maxRetries}) after network error...`);
+      // Exponential backoff: 1s, 2s, 4s, etc.
+      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, retries - 1)));
+    }
+  }
+};
+
+/**
+ * Upload a document with retry capability
+ * @param {File} file - The file to upload
+ * @param {string} [type='document'] - The type of upload
+ * @param {Object} [metadata={}] - Additional metadata for the upload
+ * @returns {Promise<Object>} Response with upload result
+ */
+export const uploadDocumentWithRetry = async (file, type = 'document', metadata = {}) => {
+  return retryRequest(async () => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', type);
+    
+    if (metadata) {
+      formData.append('metadata', JSON.stringify(metadata));
+    }
+    
+    try {
+      // Use the raw axios instance for this request to avoid response transformation
+      const response = await api.post('/documents/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        // Increase timeout for large file uploads
+        timeout: 60000, // 60 seconds
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Document upload error:', error);
+      throw error;
+    }
+  }, 3); // Try up to 3 times
+};
+
+/**
+ * Get all users (debug view)
+ * @returns {Promise<Object>} Response with users array
+ */
 export const getUsers = async () => {
   try {
     return await api.get('/users');
   } catch (error) {
     console.error('Error fetching users:', error);
-    return { success: false, message: error.message || 'Error fetching users' };
+    return { 
+      success: false, 
+      message: error?.message || 'Error fetching users',
+      users: []
+    };
   }
 };
 
-export const getLegalUpdates = async () => {
-  // In a real app, you would create an endpoint to fetch RSS updates
-  // For now, we'll simulate this with mock data
-  return {
-    success: true,
-    message: "Legal updates fetched successfully",
-    updates: [
-      {
-        title: "Nuova normativa sulla privacy per le aziende",
-        link: "https://www.gazzettaufficiale.it/example-1",
-        published: "2023-10-15T09:30:00Z",
-        summary: "Nuove disposizioni per la protezione dei dati personali nel contesto aziendale."
-      },
-      {
-        title: "Modifiche al Codice Civile Italiano",
-        link: "https://www.gazzettaufficiale.it/example-2",
-        published: "2023-10-10T14:45:00Z",
-        summary: "Aggiornamenti agli articoli relativi ai contratti commerciali."
-      },
-      {
-        title: "Decreto Legislativo sulla sicurezza sul lavoro",
-        link: "https://www.gazzettaufficiale.it/example-3",
-        published: "2023-10-05T11:20:00Z",
-        summary: "Nuove misure per garantire la sicurezza nei luoghi di lavoro."
-      },
-      {
-        title: "Regolamento per la protezione dei consumatori",
-        link: "https://www.gazzettaufficiale.it/example-4",
-        published: "2023-09-28T16:15:00Z",
-        summary: "Disposizioni per tutelare i diritti dei consumatori nelle transazioni online."
-      },
-      {
-        title: "Legge anti-riciclaggio: aggiornamenti",
-        link: "https://www.gazzettaufficiale.it/example-5",
-        published: "2023-09-22T10:00:00Z",
-        summary: "Modifiche alla normativa per prevenire il riciclaggio di denaro."
-      }
-    ]
-  };
-};
-
-// Admin services
+/**
+ * Get all users (admin only)
+ * @param {number} page - Page number for pagination
+ * @param {number} perPage - Items per page
+ * @returns {Promise<Object>} Response with user data and pagination info
+ */
 export const getUsersAdmin = async (page = 1, perPage = 10) => {
   try {
     return await api.get(`/admin/users?page=${page}&per_page=${perPage}`);
   } catch (error) {
     console.error('Error fetching users:', error);
-    return { success: false, message: error.message || 'Error fetching users' };
+    return { 
+      success: false, 
+      message: error?.message || 'Error fetching users',
+      users: [],
+      pagination: { page: 1, total_pages: 1 }
+    };
   }
 };
 
+/**
+ * Get a user by ID (admin only)
+ * @param {string} userId - The ID of the user to fetch
+ * @returns {Promise<Object>} Response with user data
+ */
 export const getUserByIdAdmin = async (userId) => {
   try {
     return await api.get(`/admin/users/${userId}`);
   } catch (error) {
     console.error('Error fetching user details:', error);
-    return { success: false, message: error.message || 'Error fetching user details' };
+    return { 
+      success: false, 
+      message: error?.message || 'Error fetching user details' 
+    };
   }
 };
 
+/**
+ * Create a new user (admin only)
+ * @param {Object} userData - User data to create
+ * @returns {Promise<Object>} Response with created user data
+ */
 export const createUserAdmin = async (userData) => {
   try {
     return await api.post('/admin/users', userData);
   } catch (error) {
     console.error('Error creating user:', error);
-    return { success: false, message: error.message || 'Error creating user' };
+    return { 
+      success: false, 
+      message: error?.message || 'Error creating user' 
+    };
   }
 };
 
+/**
+ * Update a user (admin only)
+ * @param {string} userId - The ID of the user to update
+ * @param {Object} userData - User data to update
+ * @returns {Promise<Object>} Response with updated user data
+ */
 export const updateUserAdmin = async (userId, userData) => {
   try {
     return await api.put(`/admin/users/${userId}`, userData);
   } catch (error) {
     console.error('Error updating user:', error);
-    return { success: false, message: error.message || 'Error updating user' };
+    return { 
+      success: false, 
+      message: error?.message || 'Error updating user' 
+    };
   }
 };
 
+/**
+ * Delete a user (admin only)
+ * @param {string} userId - The ID of the user to delete
+ * @returns {Promise<Object>} Response indicating success or failure
+ */
 export const deleteUserAdmin = async (userId) => {
   try {
     return await api.delete(`/admin/users/${userId}`);
   } catch (error) {
     console.error('Error deleting user:', error);
-    return { success: false, message: error.message || 'Error deleting user' };
+    return { 
+      success: false, 
+      message: error?.message || 'Error deleting user' 
+    };
   }
 };
 
-// Profile services
+/**
+ * Get user profile
+ * @returns {Promise<Object>} Response with user profile data
+ */
 export const getUserProfile = async () => {
   try {
     return await api.get('/profile');
   } catch (error) {
     console.error('Error fetching user profile:', error);
-    return { success: false, message: error.message || 'Error fetching profile' };
+    return { 
+      success: false, 
+      message: error?.message || 'Error fetching user profile' 
+    };
   }
 };
 
+/**
+ * Update user profile
+ * @param {Object} profileData - Profile data to update
+ * @returns {Promise<Object>} Response with updated profile data
+ */
 export const updateUserProfile = async (profileData) => {
   try {
     return await api.put('/profile', profileData);
   } catch (error) {
     console.error('Error updating user profile:', error);
-    return { success: false, message: error.message || 'Error updating profile' };
+    return { 
+      success: false, 
+      message: error?.message || 'Error updating user profile' 
+    };
   }
 };
 
-export default api;
+/**
+ * Get legal updates based on user's profile preferences
+ */
+export const getLegalUpdates = async () => {
+  try {
+    const response = await api.get('/legal-updates');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching legal updates:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || 'Failed to fetch legal updates',
+      updates: []
+    };
+  }
+};
+
+/**
+ * Update the refresh interval for legal updates
+ */
+export const updateLegalUpdatesInterval = async (minutes) => {
+  try {
+    const response = await api.put('/settings/legal-updates-interval', {
+      interval: minutes
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating legal updates interval:', error);
+    return {
+      success: false,
+      message: error.response?.data?.message || 'Failed to update refresh interval'
+    };
+  }
+};
+
+// User Jurisdictions and Legal Update Sources
+export const updateUserJurisdictions = (primaryJurisdiction, selectedJurisdictions) => {
+  return api.post('/users/preferences/jurisdictions', {
+    preferred_jurisdiction: primaryJurisdiction,
+    preferred_jurisdictions: selectedJurisdictions
+  });
+};
+
+export const updateUserLegalSources = (selectedSources) => {
+  return api.post('/users/preferences/legal-sources', {
+    preferred_legal_sources: selectedSources
+  });
+};
+
+export const getAvailableJurisdictions = () => {
+  return api.get('/jurisdictions');
+};
+
+export default {
+  ...apiMethods,
+  endpoints,
+  api, // Export the axios instance for direct use if needed
+};

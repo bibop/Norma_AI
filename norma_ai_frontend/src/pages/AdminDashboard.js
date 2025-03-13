@@ -31,46 +31,33 @@ const AdminDashboard = () => {
   const [editUser, setEditUser] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
+  const [usersPerPage, setUsersPerPage] = useState(10);
   
   // Fetch users data
-  const fetchUsers = useCallback(async (page = 1) => {
-    setLoading(true);
-    setError(null);
+  const fetchUsers = useCallback(async (page = currentPage) => {
     try {
-      const response = await getUsersAdmin(page);
-      console.log("Admin API response:", response);
+      setLoading(true);
+      setError(null);
       
-      // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
-      if (response?.success) {
+      const response = await getUsersAdmin(page, usersPerPage);
+      
+      if (response.success) {
         setUsers(response.users || []);
         setTotalPages(response.pagination?.total_pages || 1);
         setCurrentPage(response.pagination?.page || 1);
+      } else if (response.isNetworkError) {
+        setError(response.message || 'Network error. Please check your connection and try again.');
+        toast.error(response.message || 'Network error. Please check your connection and try again.');
       } else {
-        const errorMessage = response?.message || 'Failed to load users';
-        setError(errorMessage);
-        toast.error(errorMessage);
-        setUsers([]);
+        throw new Error(response.message || 'Failed to fetch users');
       }
     } catch (err) {
-      console.error("Error fetching users:", err);
-      
-      // Gestire meglio l'errore per assicurare che abbiamo sempre un messaggio di errore formattato
-      let errorMessage = 'Error loading users';
-      
-      if (err?.response?.status === 403) {
-        errorMessage = 'You do not have admin privileges to access this page';
-        toast.error(errorMessage);
-        navigate('/');
-      } else {
-        errorMessage += ': ' + (err?.message || 'Unknown error');
-        toast.error(errorMessage);
-        setError(errorMessage);
-        setUsers([]);
-      }
+      setError(err.message || 'An error occurred while fetching users');
+      toast.error(err.message || 'Error loading users');
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [currentPage, usersPerPage, toast]);
   
   // Fetch on mount and page change
   useEffect(() => {
@@ -94,29 +81,24 @@ const AdminDashboard = () => {
       setLoading(true);
       const response = await getUserByIdAdmin(userId);
       
-      // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
-      if (response?.success) {
-        // Remove password from edit form
+      if (response.success) {
         const userData = { ...response.user };
         delete userData.password;
         setEditUser(userData);
         setShowUserForm(true);
       } else {
-        const errorMessage = response?.message || 'Failed to load user details';
+        const errorMessage = response.message || 'Failed to load user details';
         toast.error(errorMessage);
       }
     } catch (err) {
       console.error("Error loading user details:", err);
-      
-      // Gestire meglio l'errore per assicurare che abbiamo sempre un messaggio di errore formattato
       let errorMessage = 'Error loading user details';
-      
-      if (err?.response?.status === 403) {
+      if (err.response?.status === 403) {
         errorMessage = 'You do not have admin privileges to access this page';
         toast.error(errorMessage);
         navigate('/');
       } else {
-        errorMessage += ': ' + (err?.message || 'Unknown error');
+        errorMessage += ': ' + (err.message || 'Unknown error');
         toast.error(errorMessage);
       }
     } finally {
@@ -136,26 +118,22 @@ const AdminDashboard = () => {
       const newRole = currentRole === 'admin' ? 'user' : 'admin';
       const response = await updateUserAdmin(userId, { role: newRole });
       
-      // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
-      if (response?.success) {
+      if (response.success) {
         toast.success(`User role changed to ${newRole} successfully`);
         fetchUsers(currentPage);
       } else {
-        const errorMessage = response?.message || 'Failed to change user role';
-        toast.error(errorMessage);
+        const errorMessage = response.message || 'Failed to change user role';
+        throw new Error(errorMessage);
       }
     } catch (err) {
       console.error("Error changing user role:", err);
-      
-      // Gestire meglio l'errore per assicurare che abbiamo sempre un messaggio di errore formattato
       let errorMessage = 'Error changing user role';
-      
-      if (err?.response?.status === 403) {
+      if (err.response?.status === 403) {
         errorMessage = 'You do not have admin privileges to access this page';
         toast.error(errorMessage);
         navigate('/');
       } else {
-        errorMessage += ': ' + (err?.message || 'Unknown error');
+        errorMessage += ': ' + (err.message || 'Unknown error');
         toast.error(errorMessage);
       }
     }
@@ -167,44 +145,36 @@ const AdminDashboard = () => {
       let response;
       
       if (editUser) {
-        // Update existing user
         response = await updateUserAdmin(editUser.id, userData);
         
-        // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
-        if (response?.success) {
+        if (response.success) {
           toast.success('User updated successfully');
         } else {
-          const errorMessage = response?.message || 'Failed to update user';
+          const errorMessage = response.message || 'Failed to update user';
           throw new Error(errorMessage);
         }
       } else {
-        // Create new user
         response = await createUserAdmin(userData);
         
-        // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
-        if (response?.success) {
+        if (response.success) {
           toast.success('User created successfully');
         } else {
-          const errorMessage = response?.message || 'Failed to create user';
+          const errorMessage = response.message || 'Failed to create user';
           throw new Error(errorMessage);
         }
       }
       
-      // Close form and refresh users list
       setShowUserForm(false);
       fetchUsers(currentPage);
     } catch (err) {
       console.error("Error saving user:", err);
-      
-      // Gestire meglio l'errore per assicurare che abbiamo sempre un messaggio di errore formattato
       let errorMessage = 'Error saving user';
-      
-      if (err?.response?.status === 403) {
+      if (err.response?.status === 403) {
         errorMessage = 'You do not have admin privileges to access this page';
         toast.error(errorMessage);
         navigate('/');
       } else {
-        errorMessage += ': ' + (err?.message || 'Unknown error');
+        errorMessage += ': ' + (err.message || 'Unknown error');
         toast.error(errorMessage);
       }
     }
@@ -217,27 +187,23 @@ const AdminDashboard = () => {
     try {
       const response = await deleteUserAdmin(userToDelete.id);
       
-      // Gestire anche il caso in cui response è undefined o non ha la struttura attesa
-      if (response?.success) {
+      if (response.success) {
         toast.success('User deleted successfully');
         setShowDeleteModal(false);
         fetchUsers(currentPage);
       } else {
-        const errorMessage = response?.message || 'Failed to delete user';
+        const errorMessage = response.message || 'Failed to delete user';
         throw new Error(errorMessage);
       }
     } catch (err) {
       console.error("Error deleting user:", err);
-      
-      // Gestire meglio l'errore per assicurare che abbiamo sempre un messaggio di errore formattato
       let errorMessage = 'Error deleting user';
-      
-      if (err?.response?.status === 403) {
+      if (err.response?.status === 403) {
         errorMessage = 'You do not have admin privileges to access this page';
         toast.error(errorMessage);
         navigate('/');
       } else {
-        errorMessage += ': ' + (err?.message || 'Unknown error');
+        errorMessage += ': ' + (err.message || 'Unknown error');
         toast.error(errorMessage);
       }
     }

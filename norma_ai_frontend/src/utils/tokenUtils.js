@@ -11,7 +11,7 @@ export const tokenStorage = {
     try {
       cookieStorage.setItem('token', token);
     } catch (error) {
-      console.warn('Error saving token to cookie storage, using in-memory only');
+      console.warn('Error saving token to cookie storage, using in-memory only', error);
     }
   },
   getToken: () => {
@@ -26,7 +26,7 @@ export const tokenStorage = {
       // Fall back to in-memory
       return tokenStorage.inMemoryToken;
     } catch (error) {
-      console.warn('Error accessing token in cookie storage, using in-memory fallback');
+      console.warn('Error accessing token in cookie storage, using in-memory fallback', error);
       return tokenStorage.inMemoryToken;
     }
   },
@@ -38,8 +38,25 @@ export const tokenStorage = {
     try {
       cookieStorage.removeItem('token');
     } catch (error) {
-      console.warn('Error removing token from cookie storage');
+      console.warn('Error removing token from cookie storage', error);
     }
+    
+    // Clear any token from sessionStorage as well (for extra safety)
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('token');
+      }
+    } catch (sessionError) {
+      console.warn('Error clearing token from sessionStorage', sessionError);
+    }
+    
+    console.log('Token successfully removed from all storage locations');
+    
+    // Return true to indicate successful token removal
+    return true;
+  },
+  hasToken: () => {
+    return !!tokenStorage.getToken();
   }
 };
 

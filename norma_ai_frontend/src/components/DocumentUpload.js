@@ -1,14 +1,16 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Form, Button, Alert, ProgressBar } from 'react-bootstrap';
 import { uploadDocument } from '../services/documents';
 import { toast } from 'react-toastify';
 import { FiUpload } from 'react-icons/fi';
+import JurisdictionSelect from './JurisdictionSelect';
 
 const DocumentUpload = ({ onUploadSuccess }) => {
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState(null);
+  const [selectedJurisdiction, setSelectedJurisdiction] = useState('us');
   const fileInputRef = useRef(null);
 
   const handleFileChange = (e) => {
@@ -32,6 +34,10 @@ const DocumentUpload = ({ onUploadSuccess }) => {
 
   const handleUploadClick = () => {
     fileInputRef.current.click();
+  };
+
+  const handleJurisdictionChange = (jurisdiction) => {
+    setSelectedJurisdiction(jurisdiction);
   };
 
   const handleSubmit = async (e) => {
@@ -60,89 +66,123 @@ const DocumentUpload = ({ onUploadSuccess }) => {
     
     setIsUploading(true);
     setUploadProgress(0);
+    setError(null);
     
     try {
       // Simulate upload progress
       const progressInterval = setInterval(() => {
         setUploadProgress((prevProgress) => {
-          const newProgress = prevProgress + 10;
+          const newProgress = prevProgress + 5;
           return newProgress >= 90 ? 90 : newProgress;
         });
       }, 300);
       
-      const response = await uploadDocument(file);
+      // Pass both file and selected jurisdiction
+      const response = await uploadDocument(file, selectedJurisdiction);
       
       clearInterval(progressInterval);
-      setUploadProgress(100);
       
       if (response.success) {
+        setUploadProgress(100);
         toast.success('Document uploaded successfully');
         setFile(null);
-        setIsUploading(false);
-        setUploadProgress(0);
         
         if (onUploadSuccess) {
           onUploadSuccess(response.document);
         }
       } else {
-        throw new Error(response.message || 'Upload failed');
+        if (response.isNetworkError) {
+          setError('SERVER IS UNREACHABLE. Please check the connection and try again.');
+          toast.error('Connection to server lost. Please check your network connection.');
+        } else {
+          setError(response.message || 'Upload failed');
+          toast.error(response.message || 'Upload failed');
+        }
       }
     } catch (err) {
+      console.error('Document upload error:', err);
       setError(err.message || 'Failed to upload document. Please try again.');
+      toast.error(err.message || 'Failed to upload document');
+    } finally {
       setIsUploading(false);
-      setUploadProgress(0);
     }
   };
 
   return (
-    <div>
-      <h4 className="mb-3">Upload Document</h4>
-      {error && <Alert variant="danger">{error}</Alert>}
-      
+    <div className="document-upload-container">
       <Form onSubmit={handleSubmit}>
         <div 
-          className="upload-area" 
+          className={`upload-area ${isUploading ? 'uploading' : ''}`}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
           onClick={handleUploadClick}
         >
-          <FiUpload size={40} className="mb-3 text-muted" />
-          <p>Drag and drop a file here, or click to browse</p>
-          <p className="text-muted small">Supported formats: PDF, DOC, DOCX, TXT (Max 16MB)</p>
-          
-          {file && (
-            <p className="mt-3">
-              <strong>Selected file:</strong> {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-            </p>
-          )}
-          
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
+            style={{ display: 'none' }}
             accept=".pdf,.doc,.docx,.txt"
-            className="d-none"
           />
+          
+          {isUploading ? (
+            <div className="upload-progress">
+              <ProgressBar 
+                now={uploadProgress} 
+                label={`${uploadProgress}%`} 
+                variant={error ? "danger" : "primary"} 
+              />
+              <div className="upload-status">
+                {error ? 'Upload failed' : 'Uploading...'}
+              </div>
+            </div>
+          ) : file ? (
+            <div className="file-selected">
+              <FiUpload className="upload-icon" />
+              <div className="file-name">{file.name}</div>
+              <div className="file-size">({(file.size / 1024 / 1024).toFixed(2)} MB)</div>
+            </div>
+          ) : (
+            <div className="upload-prompt">
+              <FiUpload className="upload-icon" />
+              <div className="upload-text">
+                <strong>Click or drag & drop</strong> to upload a document
+              </div>
+              <div className="upload-hint">
+                Supports PDF, DOC, DOCX, TXT (Max 16MB)
+              </div>
+            </div>
+          )}
         </div>
         
-        {isUploading && (
-          <div className="mt-3">
-            <ProgressBar 
-              now={uploadProgress} 
-              label={`${uploadProgress}%`} 
-              animated 
-            />
-            <p className="text-center mt-1">
-              {uploadProgress < 100 ? 'Uploading...' : 'Processing document...'}
-            </p>
-          </div>
+        {error && (
+          <Alert variant="danger" className="mt-3">
+            {error}
+            {error.includes('SERVER IS UNREACHABLE') && (
+              <div className="mt-2">
+                <strong>Troubleshooting tips:</strong>
+                <ul>
+                  <li>Check if the server is running</li>
+                  <li>Verify your network connection</li>
+                  <li>Try refreshing the page</li>
+                </ul>
+              </div>
+            )}
+          </Alert>
         )}
+        
+        <div className="mt-3">
+          <JurisdictionSelect 
+            value={selectedJurisdiction} 
+            onChange={handleJurisdictionChange} 
+          />
+        </div>
         
         <Button 
           type="submit" 
           variant="primary" 
-          className="mt-3 w-100"
-          disabled={!file || isUploading}
+          className="mt-3 w-100" 
+          disabled={isUploading || !file}
         >
           {isUploading ? 'Uploading...' : 'Upload Document'}
         </Button>

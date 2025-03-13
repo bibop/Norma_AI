@@ -17,7 +17,7 @@ class Config:
     PASSWORD_SALT = os.environ.get('PASSWORD_SALT', 'your_password_salt_here')
     
     # Uploads
-    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+    UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'uploads')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB max upload
     
     # RSS Feed

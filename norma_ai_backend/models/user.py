@@ -2,6 +2,7 @@ from datetime import datetime
 from models import db
 from flask import current_app
 import bcrypt
+import json
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -13,6 +14,11 @@ class User(db.Model):
     last_name = db.Column(db.String(50), nullable=False)
     company = db.Column(db.String(100), nullable=True)
     role = db.Column(db.String(20), default='user')  # 'user' or 'admin'
+    preferred_jurisdiction = db.Column(db.String(50), default='us')  # Default to US
+    # Stores multiple jurisdictions as a JSON string
+    preferred_jurisdictions = db.Column(db.Text, default='["us"]')  
+    # Stores preferred legal sources as a JSON string
+    preferred_legal_sources = db.Column(db.Text, default='["official"]')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -22,22 +28,50 @@ class User(db.Model):
     def set_password(self, password):
         """Hash the password and store it in the database.
         
-        Genera automaticamente un salt sicuro e crea un hash della password.
+        Automatically generates a secure salt and creates a hash of the password.
         """
-        # Generiamo un salt sicuro e lasciamo che bcrypt lo gestisca internamente
+        # Generate a secure salt and let bcrypt handle it internally
         hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(12))
         self.password_hash = hashed.decode('utf-8')
     
     def check_password(self, password):
         """Check if the password matches the hashed password in the database.
         
-        Verifica se la password fornita corrisponde all'hash memorizzato.
+        Verifies if the provided password matches the stored hash.
         """
-        # bcrypt gestisce internamente l'estrazione del salt dall'hash
+        # bcrypt internally handles extracting the salt from the hash
         return bcrypt.checkpw(
             password.encode('utf-8'),
             self.password_hash.encode('utf-8')
         )
+    
+    def get_preferred_jurisdictions(self):
+        """Get the list of preferred jurisdictions."""
+        try:
+            return json.loads(self.preferred_jurisdictions)
+        except (TypeError, json.JSONDecodeError):
+            # Default to a list with the primary jurisdiction if there's an error
+            return [self.preferred_jurisdiction]
+    
+    def set_preferred_jurisdictions(self, jurisdictions):
+        """Set the list of preferred jurisdictions."""
+        if not jurisdictions:
+            jurisdictions = [self.preferred_jurisdiction]
+        self.preferred_jurisdictions = json.dumps(jurisdictions)
+    
+    def get_preferred_legal_sources(self):
+        """Get the list of preferred legal update sources."""
+        try:
+            return json.loads(self.preferred_legal_sources)
+        except (TypeError, json.JSONDecodeError):
+            # Default to official sources if there's an error
+            return ["official"]
+    
+    def set_preferred_legal_sources(self, sources):
+        """Set the list of preferred legal update sources."""
+        if not sources:
+            sources = ["official"]
+        self.preferred_legal_sources = json.dumps(sources)
     
     def to_dict(self):
         """Convert user object to dictionary."""
@@ -48,6 +82,9 @@ class User(db.Model):
             'last_name': self.last_name,
             'company': self.company,
             'role': self.role,
+            'preferred_jurisdiction': self.preferred_jurisdiction,
+            'preferred_jurisdictions': self.get_preferred_jurisdictions(),
+            'preferred_legal_sources': self.get_preferred_legal_sources(),
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
         }

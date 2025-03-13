@@ -13,6 +13,7 @@ class Document(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     upload_date = db.Column(db.DateTime, default=datetime.utcnow)
     last_analyzed = db.Column(db.DateTime, nullable=True)
+    jurisdiction = db.Column(db.String(50), nullable=True)  # Jurisdiction used for analysis
     
     # Compliance results as JSON
     compliance_results = db.Column(db.JSON, nullable=True)
@@ -29,5 +30,6 @@ class Document(db.Model):
             'user_id': self.user_id,
             'upload_date': self.upload_date.isoformat(),
             'last_analyzed': self.last_analyzed.isoformat() if self.last_analyzed else None,
+            'jurisdiction': self.jurisdiction,
             'compliance_results': self.compliance_results
         }

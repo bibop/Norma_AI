@@ -1,12 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
-
-# Create SQLAlchemy instance
-db = SQLAlchemy()
-
-# Import models to make them available
-from models.user import User
-from models.document import Document
+from models import db
 
 class UserSettings(db.Model):
     __tablename__ = 'user_settings'

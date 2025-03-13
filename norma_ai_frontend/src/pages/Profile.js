@@ -4,6 +4,9 @@ import { getUserProfile } from '../services/api';
 import cookieStorage from '../utils/cookieStorage';
 import ProfileForm from '../components/profile/ProfileForm';
 import PasswordChangeForm from '../components/profile/PasswordChangeForm';
+import JurisdictionSettings from '../components/profile/JurisdictionSettings';
+import LegalUpdateSources from '../components/profile/LegalUpdateSources';
+import LegalUpdates from '../components/profile/LegalUpdates';
 
 const Profile = () => {
   const [user, setUser] = useState(null);
@@ -68,9 +71,35 @@ const Profile = () => {
               user={user} 
               onProfileUpdate={handleProfileUpdate} 
             />
-          </Col>
-          <Col lg={4}>
+            
             <PasswordChangeForm />
+          </Col>
+          
+          <Col lg={4} className="mb-4">
+            <Alert variant="info" className="mb-4">
+              <strong>Profile Settings</strong>
+              <p className="mb-0 mt-2">
+                Update your personal information and preferences to customize your experience with Norma AI.
+              </p>
+            </Alert>
+          </Col>
+          
+          <Col lg={12} className="mt-3">
+            <h3 className="mb-3">Compliance Preferences</h3>
+          </Col>
+          
+          <Col lg={6} className="mb-4">
+            <JurisdictionSettings
+              user={user}
+              onUpdate={handleProfileUpdate}
+            />
+          </Col>
+          
+          <Col lg={6} className="mb-4">
+            <LegalUpdateSources
+              user={user}
+              onUpdate={handleProfileUpdate}
+            />
           </Col>
         </Row>
       )}

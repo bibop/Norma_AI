@@ -34,6 +34,11 @@ const Documents = ({ user }) => {
   const handleUploadSuccess = (newDocument) => {
     setDocuments([newDocument, ...documents]);
   };
+  
+  const handleDocumentDelete = (documentId) => {
+    // Update local state to remove the deleted document
+    setDocuments(documents.filter(doc => doc.id !== documentId));
+  };
 
   return (
     <Container>
@@ -72,7 +77,7 @@ const Documents = ({ user }) => {
             <Row xs={1} md={2} className="g-4">
               {documents.map((document) => (
                 <Col key={document.id}>
-                  <DocumentCard document={document} />
+                  <DocumentCard document={document} onDelete={handleDocumentDelete} />
                 </Col>
               ))}
             </Row>
