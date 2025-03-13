@@ -145,85 +145,66 @@ def create_app(config_class=Config):
     
     @app.route('/api/basic-login', methods=['POST', 'OPTIONS'])
     def basic_login():
-        """Simplified login endpoint for testing"""
+        """Basic login endpoint that always succeeds for testing"""
         if request.method == 'OPTIONS':
             return '', 200
+            
+        # Log request details
+        logger.info(f"Login request data: {request.json}")
         
         try:
-            # Get the request data
-            data = request.get_json()
-            if not data:
-                return jsonify({'success': False, 'message': 'No data provided'}), 400
-            
-            email = data.get('email', '')
-            password = data.get('password', '')
-            
-            if not email or not password:
-                return jsonify({'success': False, 'message': 'Email and password required'}), 400
-            
-            # For testing, accept any credentials
+            data = request.json
+            # Always succeed in test mode with any credentials
             return jsonify({
-                'success': True,
-                'message': 'Login successful',
-                'access_token': 'test-token-12345',
-                'user': {
-                    'id': 1,
-                    'email': email
+                "success": True,
+                "message": "Login successful",
+                "token": "test-token-12345",
+                "user": {
+                    "id": 1,
+                    "email": data.get('email', 'user@example.com'),
+                    "firstName": "Test",
+                    "lastName": "User",
+                    "role": "admin"
                 }
-            }), 200
-            
+            })
         except Exception as e:
-            logger.error(f"Error in basic login: {str(e)}")
+            logger.error(f"Login error: {str(e)}")
             return jsonify({
-                'success': False,
-                'message': f'Server error: {str(e)}'
+                "success": False,
+                "message": f"Login error: {str(e)}"
             }), 500
-    
-    @app.route('/api/cors-test', methods=['GET', 'POST', 'OPTIONS'])
-    def cors_test():
-        """Special endpoint for debugging CORS issues"""
+            
+    @app.route('/api/auth/validate-token', methods=['GET', 'OPTIONS'])
+    def validate_token():
+        """Check if a token is valid"""
         if request.method == 'OPTIONS':
-            # Handle preflight request with all possible headers
-            response = make_response()
-            response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
-            response.headers.add('Access-Control-Allow-Headers', 
-                                'Content-Type, Authorization, X-Requested-With, X-Debug-Client')
-            response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
-            response.headers.add('Access-Control-Max-Age', '86400')  # 24 hours
-            return response, 200
+            return '', 200
             
-        # Regular request
-        if request.method == 'GET':
-            response_data = {
-                'success': True,
-                'message': 'CORS test successful',
-                'method': 'GET',
-                'timestamp': datetime.now().isoformat(),
-                'request_headers': dict(request.headers),
-                'origin': request.headers.get('Origin', 'No origin header')
-            }
-        else:  # POST
-            try:
-                request_body = request.get_json() or {}
-            except:
-                request_body = {'error': 'Could not parse JSON body'}
+        # Get token from Authorization header
+        auth_header = request.headers.get('Authorization')
+        logger.info(f"Validate token request with auth header: {auth_header}")
+        
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+            # In test mode, always accept test token
+            if token == 'test-token-12345':
+                return jsonify({
+                    "success": True,
+                    "message": "Token is valid",
+                    "user": {
+                        "id": 1,
+                        "email": "user@example.com",
+                        "firstName": "Test",
+                        "lastName": "User",
+                        "role": "admin"
+                    }
+                })
                 
-            response_data = {
-                'success': True,
-                'message': 'CORS test successful',
-                'method': 'POST',
-                'timestamp': datetime.now().isoformat(),
-                'request_headers': dict(request.headers),
-                'request_body': request_body,
-                'origin': request.headers.get('Origin', 'No origin header')
-            }
-            
-        # Create response with explicit CORS headers
-        response = jsonify(response_data)
-        response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response
+        # Return invalid token response for any other token
+        return jsonify({
+            "success": False,
+            "message": "Invalid or expired token"
+        }), 401
     
     # Additional test endpoints for frontend components
     @app.route('/api/user/profile', methods=['GET', 'OPTIONS'])
@@ -353,6 +334,88 @@ def create_app(config_class=Config):
                 'success': False,
                 'message': f'Server error: {str(e)}'
             }), 500
+    
+    @app.route('/api/profile', methods=['GET', 'OPTIONS'])
+    def get_profile():
+        """Return mock profile data for testing"""
+        if request.method == 'OPTIONS':
+            return '', 200
+            
+        try:
+            # Mock profile data - matches the structure expected by the frontend
+            return jsonify({
+                'success': True,
+                'profile': {
+                    'id': 1,
+                    'email': 'user@example.com',
+                    'firstName': 'Test',
+                    'lastName': 'User',
+                    'role': 'admin',
+                    'createdAt': '2025-01-01T00:00:00Z',
+                    'lastLogin': '2025-03-13T09:00:00Z',
+                    'settings': {
+                        'notifications': True,
+                        'theme': 'light'
+                    },
+                    'preferences': {
+                        'jurisdictions': ['US', 'EU', 'UK'],
+                        'updateFrequency': 'daily',
+                        'categories': ['tax', 'corporate', 'employment']
+                    }
+                }
+            })
+        except Exception as e:
+            logger.error(f"Error in get_profile: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': f'Server error: {str(e)}'
+            }), 500
+    
+    @app.route('/api/cors-test', methods=['GET', 'POST', 'OPTIONS'])
+    def cors_test():
+        """Special endpoint for debugging CORS issues"""
+        if request.method == 'OPTIONS':
+            # Handle preflight request with all possible headers
+            response = make_response()
+            response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+            response.headers.add('Access-Control-Allow-Headers', 
+                                'Content-Type, Authorization, X-Requested-With, X-Debug-Client')
+            response.headers.add('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            response.headers.add('Access-Control-Max-Age', '86400')  # 24 hours
+            return response, 200
+            
+        # Regular request
+        if request.method == 'GET':
+            response_data = {
+                'success': True,
+                'message': 'CORS test successful',
+                'method': 'GET',
+                'timestamp': datetime.now().isoformat(),
+                'request_headers': dict(request.headers),
+                'origin': request.headers.get('Origin', 'No origin header')
+            }
+        else:  # POST
+            try:
+                request_body = request.get_json() or {}
+            except:
+                request_body = {'error': 'Could not parse JSON body'}
+                
+            response_data = {
+                'success': True,
+                'message': 'CORS test successful',
+                'method': 'POST',
+                'timestamp': datetime.now().isoformat(),
+                'request_headers': dict(request.headers),
+                'request_body': request_body,
+                'origin': request.headers.get('Origin', 'No origin header')
+            }
+            
+        # Create response with explicit CORS headers
+        response = jsonify(response_data)
+        response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
     
     return app
 
