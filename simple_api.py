@@ -9,12 +9,21 @@ from datetime import datetime
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 
+# Configuration constants
+API_CONFIG = {
+    'PORT': int(os.environ.get('PORT', 3002)),
+    'HOST': '0.0.0.0',  # Bind to all interfaces
+    'DEBUG': True,
+    'CORS_ORIGINS': '*',  # For testing; restrict in production
+    'API_PREFIX': '/api'
+}
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app, resources={f"{API_CONFIG['API_PREFIX']}/*": {"origins": API_CONFIG['CORS_ORIGINS']}})
 
 # Helper function to add CORS headers to all responses
 @app.after_request
@@ -35,7 +44,7 @@ def log_request():
     logger.info(f"Request: {request.method} {request.path} - Headers: {dict(request.headers)}")
 
 # Test connection endpoint
-@app.route('/api/test-connection', methods=['GET', 'OPTIONS'])
+@app.route(f"{API_CONFIG['API_PREFIX']}/test-connection", methods=['GET', 'OPTIONS'])
 def test_connection():
     """Test connection to the API server"""
     if request.method == 'OPTIONS':
@@ -49,7 +58,7 @@ def test_connection():
     })
 
 # Basic login endpoint
-@app.route('/api/basic-login', methods=['POST', 'OPTIONS'])
+@app.route(f"{API_CONFIG['API_PREFIX']}/basic-login", methods=['POST', 'OPTIONS'])
 def basic_login():
     """Simple login endpoint for testing"""
     if request.method == 'OPTIONS':
@@ -80,7 +89,7 @@ def basic_login():
         }), 500
 
 # Standard login endpoint that the frontend expects
-@app.route('/api/login', methods=['POST', 'OPTIONS'])
+@app.route(f"{API_CONFIG['API_PREFIX']}/login", methods=['POST', 'OPTIONS'])
 def login():
     """Standard login endpoint that matches frontend expectations"""
     if request.method == 'OPTIONS':
@@ -111,7 +120,7 @@ def login():
         }), 500
 
 # Profile endpoint
-@app.route('/api/profile', methods=['GET', 'OPTIONS'])
+@app.route(f"{API_CONFIG['API_PREFIX']}/profile", methods=['GET', 'OPTIONS'])
 def get_profile():
     """Return mock profile data for testing"""
     # Handle preflight request
@@ -187,7 +196,7 @@ def get_profile():
         }), 500
 
 # Legal updates endpoint
-@app.route('/api/legal-updates', methods=['GET', 'OPTIONS'])
+@app.route(f"{API_CONFIG['API_PREFIX']}/legal-updates", methods=['GET', 'OPTIONS'])
 def get_legal_updates():
     """Return mock legal updates data for testing"""
     # Handle preflight request
@@ -277,5 +286,4 @@ def get_legal_updates():
         }), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 3001))
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(debug=API_CONFIG['DEBUG'], host=API_CONFIG['HOST'], port=API_CONFIG['PORT'])

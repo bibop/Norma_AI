@@ -1,10 +1,9 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { getToken, clearToken, validateToken, isTokenExpired } from '../utils/tokenUtils';
+import { API_BASE_URL } from '../config';
 
-// Create axios instance with base URL from environment
-// Fallback to direct IP address to avoid IPv6 resolution issues
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:3001';
+// Create axios instance with base URL from central configuration
 console.log('Using API URL:', API_BASE_URL);
 
 // Create axios instance with default config
@@ -130,7 +129,7 @@ const userStorage = {
 const authService = {
   login: async (credentials) => {
     try {
-      const response = await api.post('/api/login', credentials);
+      const response = await api.post('/login', credentials);
       return response.data;
     } catch (error) {
       return {
@@ -142,7 +141,7 @@ const authService = {
   
   register: async (userData) => {
     try {
-      const response = await api.post('/api/register', userData);
+      const response = await api.post('/register', userData);
       return response.data;
     } catch (error) {
       return {
@@ -156,7 +155,7 @@ const authService = {
     try {
       // First try to call logout API if server requires it
       try {
-        await api.post('/api/logout');
+        await api.post('/logout');
       } catch (logoutError) {
         console.log('Logout API call failed, clearing local token only', logoutError);
       }
@@ -192,7 +191,7 @@ const authService = {
     
     // Then verify with server
     try {
-      const response = await api.get('/api/verify-token');
+      const response = await api.get('/verify-token');
       return response.data;
     } catch (error) {
       // Token verification failed, clear it
@@ -221,7 +220,7 @@ const userService = {
         };
       }
       
-      const response = await api.get('/api/profile');
+      const response = await api.get('/profile');
       return response.data;
     } catch (error) {
       console.error('Error fetching user profile:', error);
@@ -249,7 +248,7 @@ const userService = {
   
   updateUserProfile: async (profileData) => {
     try {
-      const response = await api.put('/api/user/profile', profileData);
+      const response = await api.put('/user/profile', profileData);
       return response.data;
     } catch (error) {
       return {
@@ -273,7 +272,7 @@ const legalService = {
         };
       }
       
-      const response = await api.get('/api/legal-updates');
+      const response = await api.get('/legal-updates');
       return response.data;
     } catch (error) {
       console.error('Error fetching legal updates:', error);
@@ -304,7 +303,7 @@ const legalService = {
 const connectivityService = {
   testConnection: async () => {
     try {
-      const response = await api.get('/api/test-connection', {
+      const response = await api.get('/test-connection', {
         // Shorter timeout for connectivity test
         timeout: 5000,
         // Don't trigger global error interceptors for this request
@@ -338,7 +337,7 @@ const connectivityService = {
 const adminService = {
   getUsersAdmin: async () => {
     try {
-      const response = await api.get('/api/admin/users');
+      const response = await api.get('/admin/users');
       return response.data;
     } catch (error) {
       return {
@@ -350,7 +349,7 @@ const adminService = {
   
   getUserByIdAdmin: async (userId) => {
     try {
-      const response = await api.get(`/api/admin/users/${userId}`);
+      const response = await api.get(`/admin/users/${userId}`);
       return response.data;
     } catch (error) {
       return {
@@ -362,7 +361,7 @@ const adminService = {
   
   updateUserAdmin: async (userId, userData) => {
     try {
-      const response = await api.put(`/api/admin/users/${userId}`, userData);
+      const response = await api.put(`/admin/users/${userId}`, userData);
       return response.data;
     } catch (error) {
       return {
@@ -374,7 +373,7 @@ const adminService = {
   
   createUserAdmin: async (userData) => {
     try {
-      const response = await api.post('/api/admin/users', userData);
+      const response = await api.post('/admin/users', userData);
       return response.data;
     } catch (error) {
       return {
@@ -386,7 +385,7 @@ const adminService = {
   
   deleteUserAdmin: async (userId) => {
     try {
-      const response = await api.delete(`/api/admin/users/${userId}`);
+      const response = await api.delete(`/admin/users/${userId}`);
       return response.data;
     } catch (error) {
       return {
@@ -401,7 +400,7 @@ const adminService = {
 const documentService = {
   getDocuments: async () => {
     try {
-      const response = await api.get('/api/documents');
+      const response = await api.get('/documents');
       return response.data;
     } catch (error) {
       return {
@@ -423,7 +422,7 @@ const documentService = {
         });
       }
       
-      const response = await api.post('/api/documents/upload', formData, {
+      const response = await api.post('/documents/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
@@ -454,20 +453,20 @@ const uploadDocumentWithRetry = documentService.uploadDocument;
 
 // User Jurisdictions and Legal Update Sources (backward compatibility)
 const updateUserJurisdictions = (primaryJurisdiction, selectedJurisdictions) => {
-  return api.post('/api/users/preferences/jurisdictions', {
+  return api.post('/users/preferences/jurisdictions', {
     preferred_jurisdiction: primaryJurisdiction,
     preferred_jurisdictions: selectedJurisdictions
   });
 };
 
 const updateUserLegalSources = (selectedSources) => {
-  return api.post('/api/users/preferences/legal-sources', {
+  return api.post('/users/preferences/legal-sources', {
     preferred_legal_sources: selectedSources
   });
 };
 
 const getAvailableJurisdictions = () => {
-  return api.get('/api/jurisdictions');
+  return api.get('/jurisdictions');
 };
 
 // Export services

@@ -3,9 +3,10 @@ import { Form, Button, Alert, Container, Card } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import { saveToken } from '../utils/tokenUtils';
 import { toast } from 'react-toastify';
+import { API_ROOT_URL } from '../config';
 
-// Force using direct IP address for API calls to avoid IPv6 issues
-const BACKEND_URL = 'http://127.0.0.1:3001';
+// Use centralized configuration
+const BACKEND_URL = API_ROOT_URL;
 
 const Login = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
