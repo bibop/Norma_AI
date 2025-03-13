@@ -1,141 +1,211 @@
 import axios from 'axios';
-import { getToken } from '../utils/tokenUtils';
-import { shouldUseOfflineMode, getMockData, markBackendUnavailable } from '../utils/offlineMode';
+import { toast } from 'react-toastify';
+import { setToken, getToken, clearToken } from '../utils/tokenUtils';
 
-// Always use direct IP address to avoid IPv6 resolution issues
-const API_URL = 'http://127.0.0.1:3001/api';
-
-console.log('Using direct API URL:', API_URL);
-
-// Create axios instance with the direct IP address
+// Create axios instance with base configuration
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: 'http://127.0.0.1:3001/api', // Use direct IP instead of localhost
+  timeout: 15000,
   headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    'Accept': 'application/json',
+    'Content-Type': 'application/json'
   },
-  withCredentials: true,
-  timeout: 15000 // Reasonable timeout to detect network issues
+  withCredentials: true, // Include cookies in cross-site requests
+  allowAbsoluteUrls: true // Allow absolute URLs for full domain requests
 });
 
-// Reset any previously saved API configurations
-localStorage.removeItem('api_config');
-
-// Define API endpoints
-const endpoints = {
-  login: '/auth/login',
-  logout: '/auth/logout',
-  register: '/auth/register',
-  refreshToken: '/auth/refresh',
-  forgotPassword: '/auth/forgot-password',
-  resetPassword: '/auth/reset-password',
-  verifyEmail: '/auth/verify-email',
-  users: '/users',
-  documents: '/documents',
-  search: '/search',
-  upload: '/upload',
-};
-
-// Helper for API methods
-const apiMethods = {
-  get: async (url, params = {}) => {
-    return api.get(url, { params });
-  },
-  post: async (url, data = {}) => {
-    return api.post(url, data);
-  },
-  put: async (url, data = {}) => {
-    return api.put(url, data);
-  },
-  delete: async (url) => {
-    return api.delete(url);
-  },
-  upload: async (url, file, onProgress) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    return api.post(url, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      onUploadProgress: (e) => {
-        const progress = Math.round((e.loaded * 100) / e.total);
-        if (onProgress) onProgress(progress);
-      },
-    });
-  },
-};
-
-// Add a request interceptor to inject the JWT token
+// Request interceptor to add auth token to requests
 api.interceptors.request.use(
-  (config) => {
-    console.log('API Request:', config.method.toUpperCase(), config.url);
-    
+  config => {
     const token = getToken();
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers['Authorization'] = `Bearer ${token}`;
+      // Safe logging with null check
+      try {
+        console.log('Adding token to request:', `Bearer ${token.substring(0, 5)}...`);
+      } catch (e) {
+        console.log('Token available but cannot log its contents');
+      }
+    } else {
+      console.log('No token available for request');
     }
     return config;
   },
-  (error) => {
+  error => {
     console.error('Request error:', error);
     return Promise.reject(error);
   }
 );
 
-// Add a response interceptor to handle errors and normalize response format
+// Response interceptor to handle errors
 api.interceptors.response.use(
-  (response) => {
-    console.log('API Response success:', response.status, response.config.url);
-    // Return the data directly
-    return response.data;
+  response => {
+    // Ensure data is properly structured in response
+    return response.data ? response.data : response;
   },
-  (error) => {
-    console.error('API Error:', error);
+  error => {
+    // Enhanced error handling with detailed logging
+    console.error('API Response Error:', error);
     
-    // Network errors (no response from server)
     if (!error.response) {
-      console.error('Network error details:', {
-        message: error.message,
-        config: error.config ? {
-          url: error.config.url,
-          method: error.config.method,
-          baseURL: error.config.baseURL
-        } : 'No config'
-      });
-      
-      markBackendUnavailable(); // Mark backend as unavailable for offline mode
-      
+      // Network error - server unreachable
+      console.error('Network error detected - server might be unreachable');
       return Promise.reject({
         success: false,
         isNetworkError: true,
-        message: 'SERVER IS UNREACHABLE. Please check the connection',
+        message: 'Network error. Server is unreachable.',
         status: 'network_error'
       });
     }
     
-    // Handle unauthorized errors (token expired or invalid)
-    if (error.response.status === 401) {
-      // Remove token
-      localStorage.removeItem('token');
-      
-      // Redirect to login page if not already there
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
-    }
+    // Server responded with error status
+    const status = error.response.status;
+    const responseData = error.response.data || {};
     
-    // Return a formatted error object
-    if (error.response.data) {
-      return Promise.reject(error.response.data);
-    }
+    console.error(`Server responded with status ${status}:`, responseData);
     
-    return Promise.reject({ 
-      success: false, 
-      message: error.message || 'An error occurred'
+    return Promise.reject({
+      success: false,
+      isNetworkError: false,
+      message: responseData.message || `Error ${status}: Server error`,
+      status: status,
+      data: responseData
     });
   }
 );
+
+// Authentication services
+export const authService = {
+  login: async (credentials) => {
+    try {
+      const response = await api.post('/basic-login', credentials);
+      
+      // Handle response structure: extract data from response if needed
+      const responseData = response.data || response;
+      
+      // Save auth token from response - handle both token formats for compatibility
+      if (responseData) {
+        // Try both token field formats that might come from the backend
+        const token = responseData.token || responseData.access_token;
+        if (token) {
+          setToken(token);
+          console.log('Token saved after login');
+        } else {
+          console.warn('Login successful but no token received in response data:', responseData);
+        }
+      }
+      
+      return responseData;
+    } catch (error) {
+      console.error('Error during login:', error);
+      throw error;
+    }
+  },
+  
+  logout: () => {
+    clearToken();
+    return { success: true };
+  },
+  
+  validateToken: async () => {
+    try {
+      const response = await api.get('/auth/validate-token');
+      return response;
+    } catch (error) {
+      clearToken(); // Clear invalid token
+      throw error;
+    }
+  },
+  
+  getCurrentUser: async () => {
+    try {
+      return await api.get('/profile');
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      throw error;
+    }
+  }
+};
+
+// User profile services
+export const userService = {
+  getProfile: async () => {
+    try {
+      return await api.get('/profile');
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      throw error;
+    }
+  },
+  
+  updateProfile: async (profileData) => {
+    try {
+      return await api.put('/profile', profileData);
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      throw error;
+    }
+  }
+};
+
+// Legal updates services
+export const legalService = {
+  getLegalUpdates: async () => {
+    try {
+      return await api.get('/legal-updates');
+    } catch (error) {
+      console.error('Error fetching legal updates:', error);
+      throw error;
+    }
+  }
+};
+
+// Document services
+export const documentService = {
+  getDocuments: async () => {
+    try {
+      return await api.get('/documents');
+    } catch (error) {
+      console.error('Error fetching documents:', error);
+      throw error;
+    }
+  },
+  
+  uploadDocument: async (documentData) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', documentData.file);
+      formData.append('title', documentData.title);
+      
+      if (documentData.tags) {
+        documentData.tags.forEach(tag => {
+          formData.append('tags[]', tag);
+        });
+      }
+      
+      return await api.post('/documents/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+    } catch (error) {
+      console.error('Error uploading document:', error);
+      throw error;
+    }
+  }
+};
+
+// Network status check service
+export const networkService = {
+  checkConnection: async () => {
+    try {
+      return await api.get('/test-connection');
+    } catch (error) {
+      console.error('Error checking connection:', error);
+      throw error;
+    }
+  }
+};
 
 // Shared user data storage with memory fallback
 export const userStorage = {
@@ -422,8 +492,4 @@ export const getAvailableJurisdictions = () => {
   return api.get('/jurisdictions');
 };
 
-export default {
-  ...apiMethods,
-  endpoints,
-  api, // Export the axios instance for direct use if needed
-};
+export default api;

@@ -61,17 +61,28 @@ export const tokenStorage = {
 };
 
 // Public API
-export const saveToken = (token) => {
-  tokenStorage.setToken(token);
+export const setToken = (token) => {
+  if (token) {
+    console.log('Setting token:', token.substring(0, 5) + '...');
+    tokenStorage.setToken(token);
+  } else {
+    console.warn('Attempted to set undefined token');
+  }
 };
 
 export const getToken = () => {
-  return tokenStorage.getToken();
+  const token = tokenStorage.getToken();
+  return token || null; // Ensure we never return undefined
 };
 
-export const removeToken = () => {
+export const clearToken = () => {
+  console.log('Clearing token');
   tokenStorage.removeToken();
 };
+
+// Aliases for compatibility
+export const saveToken = setToken;
+export const removeToken = clearToken;
 
 export const isTokenExpired = (token) => {
   if (!token) return true;

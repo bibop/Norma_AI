@@ -56,14 +56,36 @@ def create_app(config_class=Config):
         identity = jwt_data["sub"]
         return identity
     
-    # Configure CORS to allow all origins during development
-    CORS(app, resources={r"/api/*": {
-        "origins": "*",
-        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "X-Debug-Client"],
-        "methods": ["GET", "PUT", "POST", "DELETE", "OPTIONS"],
-        "supports_credentials": True,
-        "max_age": 86400
-    }})
+    # Enhanced CORS setup - accept requests from any origin
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": "*",
+            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "X-Debug-Client"],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "supports_credentials": True,
+            "max_age": 86400
+        }
+    })
+
+    # Fix CORS issues by adding headers to all responses
+    @app.after_request
+    def add_cors_headers(response):
+        # Get the origin from the request
+        origin = request.headers.get('Origin', '*')
+        
+        # Log the origin for debugging
+        logger.info(f"Setting CORS headers for origin: {origin}")
+        
+        # Set CORS headers on every response
+        response.headers.add('Access-Control-Allow-Origin', origin)
+        response.headers.add('Access-Control-Allow-Headers', 
+                            'Content-Type,Authorization,X-Requested-With,X-Debug-Client')
+        response.headers.add('Access-Control-Allow-Methods', 
+                            'GET,PUT,POST,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Max-Age', '86400')  # 24 hours
+        
+        return response
 
     # Log all requests for debugging
     @app.before_request
@@ -76,16 +98,6 @@ def create_app(config_class=Config):
         logger.info(f"Response: {response.status_code} - Headers: {dict(response.headers)}")
         return response
 
-    # Make sure all responses include CORS headers
-    @app.after_request
-    def after_request(response):
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,X-Debug-Client')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        response.headers.add('Access-Control-Max-Age', '86400')  # 24 hours
-        return response
-    
     # Ensure upload folder exists
     upload_folder = os.path.join(app.instance_path, 'uploads')
     reports_folder = os.path.join(upload_folder, 'reports')
@@ -159,6 +171,7 @@ def create_app(config_class=Config):
                 "success": True,
                 "message": "Login successful",
                 "token": "test-token-12345",
+                "access_token": "test-token-12345", 
                 "user": {
                     "id": 1,
                     "email": data.get('email', 'user@example.com'),
@@ -206,33 +219,76 @@ def create_app(config_class=Config):
             "message": "Invalid or expired token"
         }), 401
     
-    # Additional test endpoints for frontend components
-    @app.route('/api/user/profile', methods=['GET', 'OPTIONS'])
-    def get_user_profile():
-        """Return mock user profile data for testing"""
+    @app.route('/api/profile', methods=['GET', 'OPTIONS'])
+    def get_profile():
+        """Return mock profile data for testing"""
+        # Handle preflight request
         if request.method == 'OPTIONS':
             return '', 200
             
         try:
-            # Mock user profile data
-            return jsonify({
-                'success': True,
-                'user': {
-                    'id': 1,
-                    'email': 'user@example.com',
-                    'firstName': 'Test',
-                    'lastName': 'User',
-                    'role': 'admin',
-                    'createdAt': '2025-01-01T00:00:00Z',
-                    'lastLogin': '2025-03-13T09:00:00Z',
-                    'settings': {
-                        'notifications': True,
-                        'theme': 'light'
+            # Log request details for debugging
+            auth_header = request.headers.get('Authorization')
+            logger.info(f"Profile request received. Headers: {dict(request.headers)}")
+            
+            # Check for missing authorization header
+            if not auth_header:
+                logger.warning("Authorization header missing in profile request")
+                return jsonify({
+                    'success': False,
+                    'message': 'Authorization header required'
+                }), 401
+                
+            # Log the token format
+            logger.info(f"Auth header format: {auth_header}")
+            
+            # Validate Bearer token format
+            if not auth_header.startswith('Bearer '):
+                logger.warning(f"Invalid auth header format: {auth_header}")
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid authorization format. Expected: Bearer TOKEN'
+                }), 401
+            
+            # Extract and validate token
+            token = auth_header.split(' ')[1]
+            logger.info(f"Token extracted: {token}")
+            
+            # Accept either test-token-12345 or any token starting with 'test-'
+            if token == 'test-token-12345' or token.startswith('test-'):
+                logger.info(f"Valid test token: {token}")
+                # Mock profile data
+                return jsonify({
+                    'success': True,
+                    'profile': {
+                        'id': 1,
+                        'email': 'user@example.com',
+                        'firstName': 'Test',
+                        'lastName': 'User',
+                        'role': 'admin',
+                        'createdAt': '2025-01-01T00:00:00Z',
+                        'lastLogin': '2025-03-13T09:00:00Z',
+                        'settings': {
+                            'notifications': True,
+                            'theme': 'light'
+                        },
+                        'preferences': {
+                            'jurisdictions': ['US', 'EU', 'UK'],
+                            'updateFrequency': 'daily',
+                            'categories': ['tax', 'corporate', 'employment']
+                        }
                     }
-                }
-            })
+                })
+            else:
+                logger.warning(f"Invalid token: {token}")
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid token'
+                }), 401
+                
         except Exception as e:
-            logger.error(f"Error in get_user_profile: {str(e)}")
+            # Log the full exception
+            logger.error(f"Error in get_profile: {str(e)}", exc_info=True)
             return jsonify({
                 'success': False,
                 'message': f'Server error: {str(e)}'
@@ -241,42 +297,87 @@ def create_app(config_class=Config):
     @app.route('/api/legal-updates', methods=['GET', 'OPTIONS'])
     def get_legal_updates():
         """Return mock legal updates data for testing"""
+        # Handle preflight request
         if request.method == 'OPTIONS':
             return '', 200
             
         try:
-            # Mock legal updates data
-            return jsonify({
-                'success': True,
-                'updates': [
-                    {
-                        'id': 1,
-                        'title': 'New Tax Regulations 2025',
-                        'summary': 'Updates to corporate tax regulations for fiscal year 2025',
-                        'date': '2025-03-01T00:00:00Z',
-                        'category': 'Tax',
-                        'url': 'https://example.com/tax-updates-2025'
-                    },
-                    {
-                        'id': 2,
-                        'title': 'GDPR Compliance Update',
-                        'summary': 'New guidelines for GDPR compliance in AI applications',
-                        'date': '2025-02-15T00:00:00Z',
-                        'category': 'Compliance',
-                        'url': 'https://example.com/gdpr-ai-2025'
-                    },
-                    {
-                        'id': 3,
-                        'title': 'Employment Law Changes',
-                        'summary': 'Recent changes to employment law affecting remote workers',
-                        'date': '2025-01-20T00:00:00Z',
-                        'category': 'Employment',
-                        'url': 'https://example.com/employment-remote-2025'
-                    }
-                ]
-            })
+            # Log request details for debugging
+            auth_header = request.headers.get('Authorization')
+            logger.info(f"Legal updates request received. Headers: {dict(request.headers)}")
+            
+            # Check for missing authorization header
+            if not auth_header:
+                logger.warning("Authorization header missing in legal updates request")
+                return jsonify({
+                    'success': False,
+                    'message': 'Authorization header required'
+                }), 401
+                
+            # Log the token format
+            logger.info(f"Auth header format: {auth_header}")
+            
+            # Validate Bearer token format
+            if not auth_header.startswith('Bearer '):
+                logger.warning(f"Invalid auth header format: {auth_header}")
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid authorization format. Expected: Bearer TOKEN'
+                }), 401
+            
+            # Extract and validate token
+            token = auth_header.split(' ')[1]
+            logger.info(f"Token extracted: {token}")
+            
+            # Accept either test-token-12345 or any token starting with 'test-'
+            if token == 'test-token-12345' or token.startswith('test-'):
+                logger.info(f"Valid test token: {token}")
+                # Mock legal updates data
+                return jsonify({
+                    'success': True,
+                    'updates': [
+                        {
+                            'id': 1,
+                            'title': 'New Tax Regulations 2025',
+                            'summary': 'Summary of the new tax regulations for 2025',
+                            'content': 'Detailed content about the new tax regulations...',
+                            'publishDate': '2025-03-10T14:30:00Z',
+                            'category': 'tax',
+                            'jurisdiction': 'US',
+                            'importance': 'high'
+                        },
+                        {
+                            'id': 2,
+                            'title': 'EU Corporate Governance Update',
+                            'summary': 'New corporate governance guidelines in EU',
+                            'content': 'Detailed content about corporate governance...',
+                            'publishDate': '2025-03-08T10:15:00Z',
+                            'category': 'corporate',
+                            'jurisdiction': 'EU',
+                            'importance': 'medium'
+                        },
+                        {
+                            'id': 3,
+                            'title': 'UK Employment Law Changes',
+                            'summary': 'Recent updates to UK employment laws',
+                            'content': 'Detailed content about employment law changes...',
+                            'publishDate': '2025-03-05T08:45:00Z',
+                            'category': 'employment',
+                            'jurisdiction': 'UK',
+                            'importance': 'high'
+                        }
+                    ]
+                })
+            else:
+                logger.warning(f"Invalid token: {token}")
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid token'
+                }), 401
+                
         except Exception as e:
-            logger.error(f"Error in get_legal_updates: {str(e)}")
+            # Log the full exception
+            logger.error(f"Error in get_legal_updates: {str(e)}", exc_info=True)
             return jsonify({
                 'success': False,
                 'message': f'Server error: {str(e)}'
@@ -289,6 +390,27 @@ def create_app(config_class=Config):
             return '', 200
             
         try:
+            # Log the authorization header for debugging
+            auth_header = request.headers.get('Authorization')
+            logger.info(f"Documents request with auth header: {auth_header}")
+            
+            # Check for valid authorization
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return jsonify({
+                    'success': False,
+                    'message': 'Authorization required'
+                }), 401
+                
+            # Extract token
+            token = auth_header.split(' ')[1]
+            
+            # In test mode, accept either the specific test token or any token that starts with 'test-'
+            if token != 'test-token-12345' and not token.startswith('test-'):
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid token'
+                }), 401
+            
             # Mock documents data
             return jsonify({
                 'success': True,
@@ -305,28 +427,25 @@ def create_app(config_class=Config):
                     },
                     {
                         'id': 2,
-                        'title': 'Employee Handbook v2',
-                        'filename': 'employee_handbook_v2.docx',
-                        'uploadDate': '2025-01-20T14:15:00Z',
-                        'fileSize': 3540000,
+                        'title': 'Corporate Compliance Guidelines',
+                        'filename': 'compliance_guidelines.docx',
+                        'uploadDate': '2025-01-20T14:45:00Z',
+                        'fileSize': 890000,
                         'fileType': 'docx',
                         'status': 'processed',
-                        'tags': ['HR', 'policies']
+                        'tags': ['corporate', 'compliance', 'guidelines']
                     },
                     {
                         'id': 3,
-                        'title': 'Client Agreement Template',
-                        'filename': 'client_agreement_template.docx',
-                        'uploadDate': '2025-03-01T09:45:00Z',
-                        'fileSize': 850000,
-                        'fileType': 'docx',
+                        'title': 'Employee Handbook 2025',
+                        'filename': 'employee_handbook.pdf',
+                        'uploadDate': '2025-01-05T08:15:00Z',
+                        'fileSize': 2100000,
+                        'fileType': 'pdf',
                         'status': 'processed',
-                        'tags': ['legal', 'agreement', 'template']
+                        'tags': ['employment', 'handbook', '2025']
                     }
-                ],
-                'totalCount': 3,
-                'page': 1,
-                'pageSize': 10
+                ]
             })
         except Exception as e:
             logger.error(f"Error in get_documents: {str(e)}")
@@ -335,42 +454,7 @@ def create_app(config_class=Config):
                 'message': f'Server error: {str(e)}'
             }), 500
     
-    @app.route('/api/profile', methods=['GET', 'OPTIONS'])
-    def get_profile():
-        """Return mock profile data for testing"""
-        if request.method == 'OPTIONS':
-            return '', 200
-            
-        try:
-            # Mock profile data - matches the structure expected by the frontend
-            return jsonify({
-                'success': True,
-                'profile': {
-                    'id': 1,
-                    'email': 'user@example.com',
-                    'firstName': 'Test',
-                    'lastName': 'User',
-                    'role': 'admin',
-                    'createdAt': '2025-01-01T00:00:00Z',
-                    'lastLogin': '2025-03-13T09:00:00Z',
-                    'settings': {
-                        'notifications': True,
-                        'theme': 'light'
-                    },
-                    'preferences': {
-                        'jurisdictions': ['US', 'EU', 'UK'],
-                        'updateFrequency': 'daily',
-                        'categories': ['tax', 'corporate', 'employment']
-                    }
-                }
-            })
-        except Exception as e:
-            logger.error(f"Error in get_profile: {str(e)}")
-            return jsonify({
-                'success': False,
-                'message': f'Server error: {str(e)}'
-            }), 500
-    
+    # Additional test endpoints for frontend components
     @app.route('/api/cors-test', methods=['GET', 'POST', 'OPTIONS'])
     def cors_test():
         """Special endpoint for debugging CORS issues"""
