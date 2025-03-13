@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Connection Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #results {
+            white-space: pre-wrap;
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .status {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <h1>API Connection Test</h1>
+    
+    <div class="card">
+        <h2>Connection Status</h2>
+        <div id="status" class="status pending">Checking connection...</div>
+        
+        <h3>Test Options</h3>
+        <button onclick="testConnection('fetch')">Test with Fetch API</button>
+        <button onclick="testConnection('xhr')">Test with XMLHttpRequest</button>
+        <button onclick="testConnection('jquery')">Test with jQuery</button>
+        
+        <h3>Advanced Options</h3>
+        <button onclick="testCORS()">Test CORS Headers</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+    
+    <div class="card">
+        <h2>Test Results</h2>
+        <div id="results">No tests run yet</div>
+    </div>
+
+    <!-- Include jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <script>
+        // Configuration
+        const API_URL = 'http://127.0.0.1:3001/api';
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            logMessage('Test page loaded');
+            logMessage(`API URL: ${API_URL}`);
+            testConnection('fetch');
+        });
+        
+        // Utility functions
+        function updateStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+        
+        function logMessage(message) {
+            const resultsEl = document.getElementById('results');
+            const timestamp = new Date().toLocaleTimeString();
+            resultsEl.textContent += `\n[${timestamp}] ${message}`;
+            resultsEl.scrollTop = resultsEl.scrollHeight;
+        }
+        
+        function clearResults() {
+            document.getElementById('results').textContent = 'Results cleared';
+        }
+        
+        // Test functions
+        async function testConnection(method) {
+            updateStatus('Testing connection...', 'pending');
+            logMessage(`Testing connection with ${method}...`);
+            
+            try {
+                let result;
+                
+                switch(method) {
+                    case 'fetch':
+                        result = await testWithFetch();
+                        break;
+                    case 'xhr':
+                        result = await testWithXHR();
+                        break;
+                    case 'jquery':
+                        result = await testWithJQuery();
+                        break;
+                    default:
+                        throw new Error('Unknown test method');
+                }
+                
+                if (result.success) {
+                    updateStatus('Connection Successful! ✅', 'success');
+                    logMessage(`Connection test successful with ${method}`);
+                    logMessage(`Server response: ${JSON.stringify(result.data, null, 2)}`);
+                } else {
+                    updateStatus('Connection Failed! ❌', 'error');
+                    logMessage(`Connection test failed with ${method}: ${result.error}`);
+                }
+            } catch (error) {
+                updateStatus('Connection Error! ❌', 'error');
+                logMessage(`Error during ${method} test: ${error.message}`);
+            }
+        }
+        
+        async function testWithFetch() {
+            try {
+                const response = await fetch(`${API_URL}/test-connection`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Debug-Client': 'ConnectionTestPage'
+                    },
+                    mode: 'cors',
+                    cache: 'no-store'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                return { success: true, data };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+        
+        function testWithXHR() {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', `${API_URL}/test-connection`);
+                xhr.setRequestHeader('Accept', 'application/json');
+                xhr.setRequestHeader('X-Debug-Client', 'ConnectionTestPage-XHR');
+                xhr.timeout = 5000;
+                
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            resolve({ success: true, data });
+                        } catch (e) {
+                            resolve({ success: false, error: 'Invalid JSON response' });
+                        }
+                    } else {
+                        resolve({ success: false, error: `Server responded with status: ${xhr.status}` });
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    resolve({ success: false, error: 'Network error occurred' });
+                };
+                
+                xhr.ontimeout = function() {
+                    resolve({ success: false, error: 'Request timed out' });
+                };
+                
+                xhr.send();
+            });
+        }
+        
+        function testWithJQuery() {
+            return new Promise((resolve, reject) => {
+                $.ajax({
+                    url: `${API_URL}/test-connection`,
+                    method: 'GET',
+                    dataType: 'json',
+                    timeout: 5000,
+                    headers: {
+                        'X-Debug-Client': 'ConnectionTestPage-jQuery'
+                    },
+                    success: function(data) {
+                        resolve({ success: true, data });
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        resolve({ 
+                            success: false, 
+                            error: `${textStatus}: ${errorThrown || 'Unknown error'}` 
+                        });
+                    }
+                });
+            });
+        }
+        
+        function testCORS() {
+            logMessage('Testing CORS configuration...');
+            
+            // Test preflight OPTIONS request
+            fetch(`${API_URL}/test-connection`, {
+                method: 'OPTIONS',
+                headers: {
+                    'Access-Control-Request-Method': 'GET',
+                    'Access-Control-Request-Headers': 'X-Debug-Client,Content-Type',
+                    'Origin': window.location.origin
+                }
+            })
+            .then(response => {
+                logMessage(`CORS Preflight response status: ${response.status}`);
+                
+                // Log all CORS-related headers
+                const corsHeaders = {};
+                [
+                    'access-control-allow-origin',
+                    'access-control-allow-methods',
+                    'access-control-allow-headers',
+                    'access-control-allow-credentials',
+                    'access-control-max-age'
+                ].forEach(header => {
+                    corsHeaders[header] = response.headers.get(header);
+                });
+                
+                logMessage(`CORS Headers: ${JSON.stringify(corsHeaders, null, 2)}`);
+                
+                if (response.status === 204 || response.status === 200) {
+                    logMessage('CORS Preflight successful ✅');
+                } else {
+                    logMessage('CORS Preflight failed ❌');
+                }
+            })
+            .catch(error => {
+                logMessage(`CORS Preflight error: ${error.message}`);
+            });
+        }
+    </script>
+</body>
+</html>

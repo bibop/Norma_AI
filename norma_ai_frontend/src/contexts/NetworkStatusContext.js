@@ -30,7 +30,8 @@ export const NetworkStatusProvider = ({ children }) => {
         credentials: 'omit',
         mode: 'cors',
         headers: {
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'X-Debug-Client': 'NetworkStatusContext'
         }
       });
       

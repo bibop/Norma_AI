@@ -303,24 +303,51 @@ const legalService = {
 const connectivityService = {
   testConnection: async () => {
     try {
-      const response = await api.get('/test-connection', {
-        // Shorter timeout for connectivity test
-        timeout: 5000,
-        // Don't trigger global error interceptors for this request
-        skipErrorHandler: true,
-        // Don't use auth for connection test
-        headers: {
-          'X-Test-Request': 'true'
+      // First attempt with Axios instance
+      try {
+        const response = await api.get('/test-connection', {
+          // Shorter timeout for connectivity test
+          timeout: 5000,
+          // Don't trigger global error interceptors for this request
+          skipErrorHandler: true,
+          // Don't use auth for connection test
+          headers: {
+            'X-Test-Request': 'true'
+          }
+        });
+        
+        return {
+          success: true,
+          message: 'Connection successful via Axios',
+          data: response.data
+        };
+      } catch (axiosError) {
+        console.warn('Axios API connection test failed, trying fetch:', axiosError);
+        
+        // Fallback to basic fetch if Axios fails
+        const fetchResponse = await fetch(`${API_BASE_URL}/test-connection`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'X-Test-Request': 'true'
+          },
+          mode: 'cors',
+          cache: 'no-cache'
+        });
+        
+        if (fetchResponse.ok) {
+          const data = await fetchResponse.json();
+          return {
+            success: true,
+            message: 'Connection successful via fetch',
+            data: data
+          };
         }
-      });
-      
-      return {
-        success: true,
-        message: 'Connection successful',
-        data: response.data
-      };
+        
+        throw new Error(`Fetch failed with status: ${fetchResponse.status}`);
+      }
     } catch (error) {
-      console.warn('API connection test failed:', error);
+      console.warn('All API connection tests failed:', error);
       
       return {
         success: false,

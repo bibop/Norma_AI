@@ -20,20 +20,43 @@ const Login = ({ onLoginSuccess }) => {
   useEffect(() => {
     const checkConnection = async () => {
       try {
-        console.log('Checking API connection...');
-        const response = await fetch(`${BACKEND_URL}/api/test-connection`, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-          },
-        });
+        console.log('Checking API connection to:', `${BACKEND_URL}/api/test-connection`);
+        
+        // Try multiple connection methods
+        let connectionSuccessful = false;
+        let connectionData = null;
+        
+        // Method 1: Standard fetch
+        try {
+          const response = await fetch(`${BACKEND_URL}/api/test-connection`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'X-Debug-Client': 'LoginComponent'
+            },
+            mode: 'cors',
+            cache: 'no-store'
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          console.log('API connection successful:', data);
+          if (response.ok) {
+            const data = await response.json();
+            console.log('API connection successful (method 1):', data);
+            connectionSuccessful = true;
+            connectionData = data;
+          }
+        } catch (err) {
+          console.warn('API connection method 1 failed:', err);
+        }
+        
+        // Update status based on connection results
+        if (connectionSuccessful) {
           setConnectionStatus('connected');
+          // Log important server info for debugging
+          if (connectionData?.server_info) {
+            console.log('Server info:', connectionData.server_info);
+          }
         } else {
-          console.error('API connection failed:', response.status);
+          console.error('All API connection methods failed');
           setConnectionStatus('failed');
         }
       } catch (err) {
