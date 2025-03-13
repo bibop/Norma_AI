@@ -18,9 +18,12 @@ const Login = ({ onLoginSuccess }) => {
 
   // Check API connection on component mount
   useEffect(() => {
+    let isMounted = true;
+    let connectionCheckTimeout = null;
+    
     const checkConnection = async () => {
       try {
-        console.log('Checking API connection to:', `${BACKEND_URL}/api/test-connection`);
+        console.log('Checking API connection to:', `${BACKEND_URL}/api/public/test-connection`);
         
         // Try multiple connection methods
         let connectionSuccessful = false;
@@ -28,12 +31,14 @@ const Login = ({ onLoginSuccess }) => {
         
         // Method 1: Standard fetch
         try {
-          const response = await fetch(`${BACKEND_URL}/api/test-connection`, {
+          console.log('Trying connection method 1...');
+          const response = await fetch(`${BACKEND_URL}/api/public/test-connection`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json',
               'X-Debug-Client': 'LoginComponent'
             },
+            credentials: 'omit', // Explicitly omit credentials for this public endpoint
             mode: 'cors',
             cache: 'no-store'
           });
@@ -43,12 +48,130 @@ const Login = ({ onLoginSuccess }) => {
             console.log('API connection successful (method 1):', data);
             connectionSuccessful = true;
             connectionData = data;
+          } else {
+            console.warn('API connection method 1 failed with status:', response.status);
           }
         } catch (err) {
           console.warn('API connection method 1 failed:', err);
+          
+          // Add more detailed error logging
+          if (err.name === 'TypeError') {
+            console.error('Network error details:', {
+              message: err.message,
+              name: err.name,
+              stack: err.stack
+            });
+          }
         }
         
-        // Update status based on connection results
+        // Only continue with other methods if component is still mounted and previous method failed
+        if (!isMounted) return;
+        
+        // Use a simple XMLHttpRequest as fallback
+        if (!connectionSuccessful) {
+          try {
+            console.log('Trying connection method 2 with XMLHttpRequest...');
+            const xhr = new XMLHttpRequest();
+            await new Promise((resolve, reject) => {
+              xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                  if (xhr.status === 200) {
+                    try {
+                      const data = JSON.parse(xhr.responseText);
+                      console.log('API connection successful (method 2):', data);
+                      connectionSuccessful = true;
+                      connectionData = data;
+                      resolve();
+                    } catch (e) {
+                      console.error('Error parsing response:', e);
+                      reject(e);
+                    }
+                  } else {
+                    reject(new Error(`Status: ${xhr.status}`));
+                  }
+                }
+              };
+              xhr.onerror = reject;
+              xhr.open('GET', `${BACKEND_URL}/api/public/test-connection`, true);
+              xhr.setRequestHeader('Accept', 'application/json');
+              xhr.setRequestHeader('X-Debug-Client', 'LoginComponent-XHR');
+              xhr.send();
+            });
+          } catch (err) {
+            console.warn('API connection method 2 failed:', err);
+          }
+        }
+        
+        // Only continue with other methods if component is still mounted and previous methods failed
+        if (!isMounted) return;
+        
+        // Use jQuery AJAX as a third fallback method
+        if (!connectionSuccessful && window.jQuery) {
+          try {
+            console.log('Trying connection method 3 with jQuery AJAX...');
+            await new Promise((resolve, reject) => {
+              window.jQuery.ajax({
+                url: `${BACKEND_URL}/api/public/test-connection`,
+                method: 'GET',
+                dataType: 'json',
+                headers: {
+                  'Accept': 'application/json',
+                  'X-Debug-Client': 'LoginComponent-jQuery'
+                },
+                xhrFields: {
+                  withCredentials: false
+                },
+                success: function(data) {
+                  console.log('API connection successful (method 3):', data);
+                  connectionSuccessful = true;
+                  connectionData = data;
+                  resolve();
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                  console.warn('jQuery AJAX error:', textStatus, errorThrown);
+                  reject(new Error(`${textStatus}: ${errorThrown}`));
+                }
+              });
+            });
+          } catch (err) {
+            console.warn('API connection method 3 failed:', err);
+          }
+        }
+        
+        // Only continue with other methods if component is still mounted and previous methods failed
+        if (!isMounted) return;
+        
+        // Try a direct IP address approach if all else fails
+        if (!connectionSuccessful) {
+          try {
+            console.log('Trying connection method 4 with direct IP...');
+            // Force using the IP address instead of hostname
+            const response = await fetch(`http://127.0.0.1:3001/api/public/test-connection`, {
+              method: 'GET',
+              headers: {
+                'Accept': 'application/json',
+                'X-Debug-Client': 'LoginComponent-DirectIP'
+              },
+              mode: 'cors',
+              cache: 'no-store'
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              console.log('API connection successful (method 4):', data);
+              connectionSuccessful = true;
+              connectionData = data;
+            } else {
+              console.warn('API connection method 4 failed with status:', response.status);
+            }
+          } catch (err) {
+            console.warn('API connection method 4 failed:', err);
+          }
+        }
+        
+        // Update status based on connection results - only if component is still mounted
+        if (!isMounted) return;
+        
         if (connectionSuccessful) {
           setConnectionStatus('connected');
           // Log important server info for debugging
@@ -59,14 +182,31 @@ const Login = ({ onLoginSuccess }) => {
           console.error('All API connection methods failed');
           setConnectionStatus('failed');
         }
+        
+        // Schedule next check after a delay if still failed
+        if (!connectionSuccessful && isMounted) {
+          connectionCheckTimeout = setTimeout(checkConnection, 8000);
+        }
       } catch (err) {
         console.error('API connection error:', err);
-        setConnectionStatus('failed');
+        if (isMounted) {
+          setConnectionStatus('failed');
+          // Schedule retry after delay
+          connectionCheckTimeout = setTimeout(checkConnection, 8000);
+        }
       }
     };
 
     checkConnection();
-  }, []);
+    
+    // Cleanup function to prevent state updates after unmount
+    return () => {
+      isMounted = false;
+      if (connectionCheckTimeout) {
+        clearTimeout(connectionCheckTimeout);
+      }
+    };
+  }, []); // Empty dependency array ensures this only runs once on mount
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -162,6 +302,7 @@ const Login = ({ onLoginSuccess }) => {
               <Alert variant="danger">
                 <strong>API server is unreachable!</strong>
                 <p className="mb-0">Please make sure the backend server is running on port 3001.</p>
+                <p className="mb-0 mt-2"><small>Retrying connection automatically...</small></p>
               </Alert>
             )}
             

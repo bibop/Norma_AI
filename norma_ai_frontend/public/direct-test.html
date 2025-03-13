@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced API Connection Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.5;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .panel {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            background-color: #f9f9f9;
+        }
+        pre {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            overflow: auto;
+            max-height: 300px;
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            margin: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #388E3C;
+        }
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .warning { color: orange; font-weight: bold; }
+        input[type="text"] {
+            padding: 8px;
+            width: 100%;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: block;
+        }
+        .test-url-container {
+            margin-bottom: 15px;
+        }
+        .config-panel {
+            margin-bottom: 20px;
+        }
+        .status-indicator {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 15px;
+        }
+        .status-online {
+            background-color: #DFF2BF;
+            color: #4F8A10;
+        }
+        .status-offline {
+            background-color: #FFD2D2;
+            color: #D8000C;
+        }
+    </style>
+</head>
+<body>
+    <h1>Advanced API Connection Test</h1>
+    <p>This tool tests API connectivity using multiple methods to diagnose connection issues.</p>
+    
+    <div class="container">
+        <div class="panel config-panel">
+            <h2>Configuration</h2>
+            <div class="test-url-container">
+                <label for="apiUrl">API URL:</label>
+                <input type="text" id="apiUrl" value="http://127.0.0.1:3001/api/public/test-connection">
+            </div>
+            
+            <div>
+                <label>Connection Status:</label>
+                <div id="connectionStatus" class="status-indicator status-offline">OFFLINE</div>
+            </div>
+            
+            <div class="button-group">
+                <button id="testAll">Run All Tests</button>
+                <button id="clearLog">Clear Log</button>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Basic Tests</h2>
+            <div class="button-group">
+                <button id="testFetch">Test with Fetch API</button>
+                <button id="testXhr">Test with XMLHttpRequest</button>
+                <button id="testJquery">Test with jQuery AJAX</button>
+                <button id="testJsonp">Test with JSONP</button>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Advanced Tests</h2>
+            <div class="button-group">
+                <button id="testFetchNoCors">Test with Fetch (no-cors)</button>
+                <button id="testFetchCredentials">Test with Fetch (include credentials)</button>
+                <button id="testCorsProxy">Test with CORS Proxy</button>
+                <button id="testWithTimeout">Test with Longer Timeout (10s)</button>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Alternative Addresses</h2>
+            <div class="button-group">
+                <button id="testLocalhost">Test with localhost</button>
+                <button id="testIPAddress">Test with 127.0.0.1</button>
+                <button id="testNetworkIP">Test with Network IP</button>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Log:</h2>
+            <pre id="result"></pre>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        // Configuration and State
+        let isConnected = false;
+        
+        // Utility functions
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value.trim();
+        }
+        
+        function setApiUrl(url) {
+            document.getElementById('apiUrl').value = url;
+        }
+        
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('connectionStatus');
+            isConnected = connected;
+            
+            if (connected) {
+                statusEl.textContent = 'ONLINE';
+                statusEl.className = 'status-indicator status-online';
+            } else {
+                statusEl.textContent = 'OFFLINE';
+                statusEl.className = 'status-indicator status-offline';
+            }
+        }
+        
+        // Log function that also updates the UI
+        function log(message, isError = false, isWarning = false) {
+            const resultElement = document.getElementById('result');
+            const timestamp = new Date().toTimeString().split(' ')[0];
+            let className = isError ? 'error' : (isWarning ? 'warning' : '');
+            
+            const formattedMessage = `[${timestamp}] ${message}`;
+            
+            if (isError) {
+                console.error(formattedMessage);
+            } else if (isWarning) {
+                console.warn(formattedMessage);
+            } else {
+                console.log(formattedMessage);
+            }
+            
+            const logLine = document.createElement('div');
+            logLine.className = className;
+            logLine.textContent = formattedMessage;
+            resultElement.appendChild(logLine);
+            
+            // Auto-scroll to bottom
+            resultElement.scrollTop = resultElement.scrollHeight;
+        }
+        
+        function clearLog() {
+            document.getElementById('result').innerHTML = '';
+            log('Log cleared');
+        }
+        
+        function displayErrorDetails(error) {
+            if (!error) {
+                log('Empty error object received', true);
+                return;
+            }
+            
+            log(`Error: ${error.message || error}`, true);
+            
+            if (error.name) log(`Error name: ${error.name}`, true);
+            if (error.stack) log(`Stack trace: ${error.stack}`, true);
+            
+            // Try to extract more information if available
+            if (error instanceof TypeError && error.message === 'Failed to fetch') {
+                log('This is a network error - the server might be down or CORS might be blocking the request', true);
+                log('Try checking browser console network tab for more details', true);
+            }
+        }
+        
+        function formatResponse(response) {
+            if (!response) return 'Empty response';
+            
+            try {
+                return typeof response === 'object' ? 
+                    JSON.stringify(response, null, 2) : 
+                    response.toString();
+            } catch (e) {
+                return `Could not format response: ${e.message}`;
+            }
+        }
+        
+        // Testing functions
+        async function testFetch() {
+            const url = getApiUrl();
+            log(`Testing connection with Fetch API...`);
+            log(`Sending request to: ${url}`);
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Debug-Client': 'direct-test-fetch'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                log(`Response received successfully`);
+                log(`Status: ${response.status}`);
+                log(`Response data: ${formatResponse(data)}`);
+                updateConnectionStatus(true);
+                return true;
+            } catch (error) {
+                displayErrorDetails(error);
+                updateConnectionStatus(false);
+                return false;
+            }
+        }
+        
+        function testXhr() {
+            return new Promise((resolve) => {
+                const url = getApiUrl();
+                log(`Testing connection with XMLHttpRequest...`);
+                log(`Sending request to: ${url}`);
+                
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', url, true);
+                xhr.setRequestHeader('X-Debug-Client', 'direct-test-xhr');
+                xhr.setRequestHeader('Accept', 'application/json');
+                xhr.timeout = 5000;
+                
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        log(`Response received successfully`);
+                        log(`Status: ${xhr.status}`);
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            log(`Response data: ${formatResponse(data)}`);
+                            updateConnectionStatus(true);
+                            resolve(true);
+                        } catch (error) {
+                            log(`Error parsing response: ${error.message}`, true);
+                            log(`Raw response: ${xhr.responseText.substring(0, 100)}...`, true);
+                            updateConnectionStatus(false);
+                            resolve(false);
+                        }
+                    } else {
+                        log(`XHR request failed with status ${xhr.status}`, true);
+                        log(`Response text: ${xhr.responseText}`, true);
+                        updateConnectionStatus(false);
+                        resolve(false);
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    log(`XHR network error occurred`, true);
+                    log(`XHR error type: ${xhr.error || 'error'}`, true);
+                    updateConnectionStatus(false);
+                    resolve(false);
+                };
+                
+                xhr.ontimeout = function() {
+                    log(`XHR request timed out after 5 seconds`, true);
+                    updateConnectionStatus(false);
+                    resolve(false);
+                };
+                
+                xhr.send();
+            });
+        }
+        
+        function testJquery() {
+            return new Promise((resolve) => {
+                const url = getApiUrl();
+                log(`Testing connection with jQuery AJAX...`);
+                log(`Sending request to: ${url}`);
+                
+                $.ajax({
+                    url: url,
+                    type: 'GET',
+                    dataType: 'json',
+                    timeout: 5000,
+                    headers: {
+                        'X-Debug-Client': 'direct-test-jquery'
+                    },
+                    success: function(data, textStatus, jqXHR) {
+                        log(`Response received successfully`);
+                        log(`Status: ${jqXHR.status}`);
+                        log(`Response data: ${formatResponse(data)}`);
+                        updateConnectionStatus(true);
+                        resolve(true);
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        log(`jQuery AJAX error: ${textStatus}`, true);
+                        log(`jQuery AJAX error thrown: ${errorThrown}`, true);
+                        log(`jQuery AJAX status: ${jqXHR.status}`, true);
+                        log(`jQuery AJAX response text: ${jqXHR.responseText}`, true);
+                        updateConnectionStatus(false);
+                        resolve(false);
+                    }
+                });
+            });
+        }
+        
+        function testJsonp() {
+            return new Promise((resolve) => {
+                const baseUrl = getApiUrl();
+                const url = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}callback=handleJsonpResponse`;
+                
+                log(`Testing connection with JSONP...`);
+                log(`Sending request to: ${url}`);
+                log(`Note: This will only work if the server supports JSONP callbacks`, true);
+                
+                // Create global callback function
+                window.handleJsonpResponse = function(data) {
+                    log(`JSONP response received successfully`);
+                    log(`Response data: ${formatResponse(data)}`);
+                    updateConnectionStatus(true);
+                    
+                    // Clean up
+                    document.body.removeChild(script);
+                    delete window.handleJsonpResponse;
+                    
+                    resolve(true);
+                };
+                
+                // Create script element
+                const script = document.createElement('script');
+                script.src = url;
+                
+                // Handle errors
+                script.onerror = function() {
+                    log(`JSONP request failed`, true);
+                    updateConnectionStatus(false);
+                    
+                    // Clean up
+                    document.body.removeChild(script);
+                    delete window.handleJsonpResponse;
+                    
+                    resolve(false);
+                };
+                
+                // Set timeout
+                const timeoutId = setTimeout(() => {
+                    if (window.handleJsonpResponse) {
+                        log(`JSONP request timed out after 5 seconds`, true);
+                        updateConnectionStatus(false);
+                        
+                        // Clean up
+                        if (document.body.contains(script)) {
+                            document.body.removeChild(script);
+                        }
+                        delete window.handleJsonpResponse;
+                        
+                        resolve(false);
+                    }
+                }, 5000);
+                
+                // Append to document to start request
+                document.body.appendChild(script);
+            });
+        }
+        
+        async function testFetchNoCors() {
+            const url = getApiUrl();
+            log(`Testing connection with Fetch API (no-cors mode)...`);
+            log(`Sending request to: ${url}`);
+            log(`Note: This will always succeed but the response will be opaque and unreadable`, true);
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'no-cors',
+                    headers: {
+                        'X-Debug-Client': 'direct-test-fetch-no-cors'
+                    }
+                });
+                
+                log(`Response received with no-cors mode`);
+                log(`Response type: ${response.type}`);
+                log(`Status: ${response.status || 'opaque'}`);
+                log(`Note: Response body cannot be read in no-cors mode`, true);
+                
+                // We can't read the body in no-cors mode, but at least we got some response
+                log(`Connection might be working, but CORS is preventing access`, true);
+                return true;
+            } catch (error) {
+                displayErrorDetails(error);
+                updateConnectionStatus(false);
+                return false;
+            }
+        }
+        
+        async function testFetchCredentials() {
+            const url = getApiUrl();
+            log(`Testing connection with Fetch API (include credentials)...`);
+            log(`Sending request to: ${url}`);
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Debug-Client': 'direct-test-fetch-credentials'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                log(`Response received successfully`);
+                log(`Status: ${response.status}`);
+                log(`Response data: ${formatResponse(data)}`);
+                updateConnectionStatus(true);
+                return true;
+            } catch (error) {
+                displayErrorDetails(error);
+                updateConnectionStatus(false);
+                return false;
+            }
+        }
+        
+        async function testCorsProxy() {
+            const originalUrl = getApiUrl();
+            const proxyUrl = `https://cors-anywhere.herokuapp.com/${originalUrl}`;
+            
+            log(`Testing connection with CORS Proxy...`);
+            log(`Original URL: ${originalUrl}`);
+            log(`Proxy URL: ${proxyUrl}`);
+            log(`Note: This test may fail if the CORS proxy service is rate-limited or requires approval`, true);
+            
+            try {
+                const response = await fetch(proxyUrl, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Debug-Client': 'direct-test-cors-proxy',
+                        'Origin': window.location.origin
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                log(`Response received successfully via CORS proxy`);
+                log(`Status: ${response.status}`);
+                log(`Response data: ${formatResponse(data)}`);
+                log(`If this test succeeded but direct tests failed, your server needs proper CORS configuration`, true);
+                updateConnectionStatus(true);
+                return true;
+            } catch (error) {
+                displayErrorDetails(error);
+                log(`CORS proxy test failed. This might be due to the proxy service being unavailable.`, true);
+                updateConnectionStatus(false);
+                return false;
+            }
+        }
+        
+        async function testWithTimeout() {
+            const url = getApiUrl();
+            log(`Testing connection with extended timeout (10 seconds)...`);
+            log(`Sending request to: ${url}`);
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    signal: controller.signal,
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Debug-Client': 'direct-test-timeout'
+                    }
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                log(`Response received successfully after extended timeout`);
+                log(`Status: ${response.status}`);
+                log(`Response data: ${formatResponse(data)}`);
+                updateConnectionStatus(true);
+                return true;
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    log(`Request timed out after 10 seconds`, true);
+                } else {
+                    displayErrorDetails(error);
+                }
+                updateConnectionStatus(false);
+                return false;
+            }
+        }
+        
+        function testLocalhost() {
+            const currentUrl = getApiUrl();
+            const localhostUrl = currentUrl.replace(/127\.0\.0\.1/g, 'localhost').replace(/\b\d+\.\d+\.\d+\.\d+\b/g, 'localhost');
+            
+            setApiUrl(localhostUrl);
+            log(`Testing with hostname 'localhost'...`);
+            log(`URL changed to: ${localhostUrl}`);
+            
+            return testFetch().then(result => {
+                if (!result) {
+                    log(`Localhost test failed`, true);
+                }
+                return result;
+            });
+        }
+        
+        function testIPAddress() {
+            const currentUrl = getApiUrl();
+            const ipUrl = currentUrl.replace(/localhost/g, '127.0.0.1');
+            
+            setApiUrl(ipUrl);
+            log(`Testing with IP address '127.0.0.1'...`);
+            log(`URL changed to: ${ipUrl}`);
+            
+            return testFetch().then(result => {
+                if (!result) {
+                    log(`IP address test failed`, true);
+                }
+                return result;
+            });
+        }
+        
+        function testNetworkIP() {
+            log(`Detecting network IP addresses...`);
+            
+            return new Promise((resolve) => {
+                // First try to get the user's network IPs
+                fetch('https://api.ipify.org?format=json')
+                    .then(response => response.json())
+                    .then(data => {
+                        const publicIP = data.ip;
+                        log(`Public IP: ${publicIP}`);
+                        
+                        // Now we'll try to detect local network IP
+                        const currentUrl = getApiUrl();
+                        const baseUrl = currentUrl.substring(0, currentUrl.lastIndexOf('/'));
+                        const networkDetectUrl = `${baseUrl}/network-detect`;
+                        
+                        log(`Testing with any available network interfaces...`);
+                        log(`Note: This test only works if the server is accessible from other network interfaces`, true);
+                        
+                        // We'll try both the hostname and port without specific IP
+                        const serverMatch = currentUrl.match(/https?:\/\/[^\/]+/);
+                        
+                        if (serverMatch) {
+                            const serverUrlParts = serverMatch[0].split(':');
+                            const port = serverUrlParts.length === 3 ? `:${serverUrlParts[2]}` : '';
+                            const path = currentUrl.substring(currentUrl.lastIndexOf('/'));
+                            
+                            // Try with original protocol and port, but remove any specific IP/host
+                            const protocolAndPort = `${serverUrlParts[0]}://${serverUrlParts[1].split('//')[1]}${port}`;
+                            const networkUrl = `${protocolAndPort}${path}`;
+                            
+                            if (networkUrl !== currentUrl) {
+                                setApiUrl(networkUrl);
+                                log(`Testing with network address: ${networkUrl}`);
+                                
+                                testFetch().then(result => {
+                                    if (!result) {
+                                        log(`Network address test failed`, true);
+                                    }
+                                    resolve(result);
+                                });
+                            } else {
+                                log(`No alternative network address available`, true);
+                                resolve(false);
+                            }
+                        } else {
+                            log(`Could not detect network configuration`, true);
+                            resolve(false);
+                        }
+                    })
+                    .catch(error => {
+                        log(`Error detecting network IP: ${error.message}`, true);
+                        resolve(false);
+                    });
+            });
+        }
+        
+        async function runAllTests() {
+            log('=== Running all tests sequentially ===');
+            const results = [];
+            
+            // Save the original URL
+            const originalUrl = getApiUrl();
+            
+            // Run each test and collect results
+            results.push(await testFetch());
+            results.push(await testXhr());
+            results.push(await testJquery());
+            
+            // Restore original URL before continuing
+            setApiUrl(originalUrl);
+            
+            results.push(await testFetchNoCors());
+            results.push(await testFetchCredentials());
+            
+            // Alternative URLs
+            const localhostSuccess = await testLocalhost();
+            results.push(localhostSuccess);
+            
+            // Restore or use successful URL
+            if (localhostSuccess) {
+                log('Using successful localhost URL for remaining tests');
+            } else {
+                setApiUrl(originalUrl);
+                log('Restored original URL');
+                
+                const ipSuccess = await testIPAddress();
+                results.push(ipSuccess);
+                
+                if (!ipSuccess) {
+                    setApiUrl(originalUrl);
+                }
+            }
+            
+            // Advanced tests
+            results.push(await testWithTimeout());
+            results.push(await testCorsProxy());
+            
+            // Restore original URL
+            setApiUrl(originalUrl);
+            
+            // Calculate success rate
+            const successCount = results.filter(Boolean).length;
+            const totalTests = results.length;
+            const successRate = Math.round((successCount / totalTests) * 100);
+            
+            log(`=== Test results: ${successCount}/${totalTests} tests passed (${successRate}%) ===`);
+            
+            if (successCount > 0) {
+                log(`At least one test passed! Check the logs above to see which methods work.`, false);
+                updateConnectionStatus(true);
+            } else {
+                log(`All tests failed. This suggests a fundamental connectivity issue.`, true);
+                log(`Common issues: Firewall, CORS policy, Server not running, Network configuration`, true);
+                updateConnectionStatus(false);
+            }
+        }
+        
+        // Setup event listeners
+        document.getElementById('testFetch').addEventListener('click', testFetch);
+        document.getElementById('testXhr').addEventListener('click', testXhr);
+        document.getElementById('testJquery').addEventListener('click', testJquery);
+        document.getElementById('testJsonp').addEventListener('click', testJsonp);
+        document.getElementById('testFetchNoCors').addEventListener('click', testFetchNoCors);
+        document.getElementById('testFetchCredentials').addEventListener('click', testFetchCredentials);
+        document.getElementById('testCorsProxy').addEventListener('click', testCorsProxy);
+        document.getElementById('testWithTimeout').addEventListener('click', testWithTimeout);
+        document.getElementById('testLocalhost').addEventListener('click', testLocalhost);
+        document.getElementById('testIPAddress').addEventListener('click', testIPAddress);
+        document.getElementById('testNetworkIP').addEventListener('click', testNetworkIP);
+        document.getElementById('testAll').addEventListener('click', runAllTests);
+        document.getElementById('clearLog').addEventListener('click', clearLog);
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Test page loaded. Click a test button to begin.');
+            log(`Default API URL: ${getApiUrl()}`);
+            updateConnectionStatus(false);
+        });
+    </script>
+</body>
+</html>

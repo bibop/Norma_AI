@@ -1,0 +1,174 @@
+# Prompt for Creating a Norma AI Clone
+
+## Project Overview
+
+Create a full-stack web application called "Norma AI" that helps legal professionals manage Italian legal compliance. The application should have a Flask backend with PostgreSQL database and a React frontend. The system allows users to upload legal documents, analyze them for compliance with Italian laws, receive legal updates, and manage their legal compliance workflow.
+
+## Technical Requirements
+
+### Backend (Flask/Python)
+
+1. Create a Flask application with the following features:
+   - RESTful API endpoints for all functionality
+   - PostgreSQL database integration using SQLAlchemy ORM
+   - JWT token-based authentication system
+   - Proper CORS configuration to allow cross-origin requests from the frontend
+   - Error handling with appropriate HTTP status codes and messages
+   - Logging system for debugging and monitoring
+
+2. Database models should include:
+   - User (with authentication details and profile information)
+   - Document (for storing uploaded legal documents)
+   - LegalUpdate (for storing legal news and updates)
+   - ComplianceReport (for storing analysis results)
+
+3. API endpoints should include:
+   - Authentication (login, register, validate token)
+   - User profile management
+   - Document upload and management
+   - Legal updates retrieval
+   - Public test endpoint for connectivity checks
+
+4. Configuration:
+   - Environment-based configuration (development, testing, production)
+   - Database migration support using Flask-Migrate
+   - Use port 3001 for the server (avoid port 5000 which is often busy on macOS)
+
+### Frontend (React)
+
+1. Create a React application with the following features:
+   - Modern component architecture using functional components and hooks
+   - Context API for state management (especially for authentication and network status)
+   - React Router for navigation
+   - Form handling with validation
+   - Responsive design using Bootstrap
+   - Toast notifications for user feedback
+   - Error handling and retry mechanisms for API calls
+
+2. Main pages/components:
+   - Login/Registration
+   - Dashboard
+   - Document Upload
+   - Document List/Management
+   - Legal Updates Feed
+   - User Profile
+   - Settings
+
+3. Services and utilities:
+   - API service with Axios for HTTP requests
+   - Authentication service with token management
+   - Network status monitoring
+   - Error handling utilities with retry capability
+   - Form validation
+
+4. Configuration:
+   - Environment-based configuration
+   - API URL configuration
+
+## Key Features to Implement
+
+1. **Authentication System**
+   - User registration and login
+   - Password hashing and secure storage
+   - JWT token generation and validation
+   - Remember me functionality
+   - Session management
+
+2. **Document Management**
+   - File upload with drag-and-drop support
+   - Document categorization
+   - Document listing and filtering
+   - Document preview
+
+3. **Legal Updates**
+   - Display legal news and updates from Italian legal sources
+   - Filter updates by category or relevance
+   - Mark updates as read/unread
+
+4. **Network Status Monitoring**
+   - Check server connectivity
+   - Handle network interruptions gracefully
+   - Provide visual indicators for network status
+
+5. **Profile Management**
+   - User profile information editing
+   - Preference settings
+   - Notification settings
+
+## Technical Challenges to Address
+
+1. **CORS Configuration**
+   - Ensure proper CORS headers in the Flask backend
+   - Handle preflight requests correctly
+   - Support credentials in cross-origin requests
+
+2. **API Connectivity**
+   - Implement multiple connection methods (Fetch, Axios, XMLHttpRequest)
+   - Add retry logic with exponential backoff
+   - Detailed error logging for debugging connectivity issues
+
+3. **Network Status Detection**
+   - Browser online/offline status monitoring
+   - Server connectivity checking
+   - Graceful degradation when offline
+
+4. **Authentication Flow**
+   - Secure token storage
+   - Token refresh mechanism
+   - Protection against CSRF attacks
+
+## Development Workflow
+
+1. Start by setting up the development environment:
+   - Flask backend with SQLAlchemy and a PostgreSQL database
+   - React frontend with necessary dependencies
+
+2. Implement the backend APIs first, focusing on:
+   - Authentication endpoints
+   - User management
+   - Document API
+   - Legal updates API
+
+3. Develop the frontend components:
+   - Authentication pages
+   - Dashboard layout
+   - Document management interface
+   - Profile management
+
+4. Integrate frontend with backend:
+   - Set up API services
+   - Implement authentication flow
+   - Connect document management
+   - Implement legal updates feed
+
+5. Add enhancement features:
+   - Network status monitoring
+   - Toast notifications
+   - Error handling and retry logic
+
+## Testing Requirements
+
+1. Include unit tests for backend functionality
+2. Add integration tests for API endpoints
+3. Implement frontend component tests
+4. Create connectivity tests to verify API communication
+
+## Deployment Considerations
+
+1. Backend:
+   - Configure for production environment
+   - Set up database migrations
+   - Use Gunicorn for WSGI
+
+2. Frontend:
+   - Create optimized production build
+   - Configure for proper API URLs
+
+## Additional Notes
+
+- Use Python 3.9+ for backend development
+- Use Node.js 16+ for frontend development
+- Pay special attention to CORS configuration to ensure seamless communication
+- Implement proper error handling and user feedback mechanisms
+- Use direct IP address (127.0.0.1) instead of localhost to avoid IPv6 resolution issues
+- Properly document the codebase with comments and README files

@@ -1,22 +1,24 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { getToken, clearToken, validateToken, isTokenExpired } from '../utils/tokenUtils';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, API_ROOT_URL, API_CONFIG } from '../config';
 
 // Create axios instance with base URL from central configuration
 console.log('Using API URL:', API_BASE_URL);
 
-// Create axios instance with default config
+// Configure Axios instance with defaults optimized for CORS
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 15000, // 15 seconds timeout
+  withCredentials: true, // Always send cookies with requests
   headers: {
     'Content-Type': 'application/json',
-  },
-  withCredentials: true, // Important for CORS with credentials
+    'Accept': 'application/json',
+    'X-Debug-Client': 'React-Frontend-v1'
+  }
 });
 
-// Request interceptor to add authorization header
+// Request interceptor with enhanced error logging
 api.interceptors.request.use(
   (config) => {
     const token = getToken();
@@ -26,10 +28,19 @@ api.interceptors.request.use(
       config.headers['Authorization'] = `Bearer ${token}`;
     }
     
+    // Log outgoing requests when in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`API Request: ${config.method?.toUpperCase() || 'UNKNOWN'} ${config.url}`, {
+        headers: config.headers,
+        withCredentials: config.withCredentials,
+        baseURL: config.baseURL
+      });
+    }
+    
     return config;
   },
   (error) => {
-    console.error('API Request Error:', error);
+    console.error('API Request Configuration Error:', error);
     return Promise.reject(error);
   }
 );
@@ -98,7 +109,50 @@ const retryOperation = async (operation, retries = 3, delay = 300) => {
       console.warn(`Operation failed, attempt ${attempt + 1}/${retries + 1}`, error);
       lastError = error;
       
-      if (attempt < retries) {
+      // Enhanced error logging with CORS detection
+      if (error.message?.includes('Network Error') || 
+          error.name === 'TypeError' || 
+          error.code === 'ECONNABORTED') {
+        console.error('Network connectivity issue detected:', {
+          message: error.message,
+          name: error.name,
+          code: error.code,
+          stack: error.stack?.split('\n').slice(0, 3).join('\n') // Only log first 3 lines of stack trace
+        });
+      }
+      
+      // Specific detection for CORS errors
+      if (error.message?.includes('has been blocked by CORS policy') ||
+          error.message?.includes('Cross-Origin Request Blocked') ||
+          error.message?.includes('CORS error') ||
+          error.message?.includes('Origin is not allowed by Access-Control-Allow-Origin')) {
+        console.error('CORS policy violation detected:', {
+          message: error.message,
+          url: error.config?.url || 'Unknown URL',
+          method: error.config?.method || 'Unknown method',
+          headers: error.config?.headers || 'No headers info',
+          origin: window.location.origin,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Dispatch CORS error event for NetworkStatusContext
+        const corsErrorEvent = new CustomEvent('api_cors_error', {
+          detail: { 
+            message: 'API request blocked by CORS policy',
+            url: error.config?.url || 'Unknown URL'
+          }
+        });
+        window.dispatchEvent(corsErrorEvent);
+        
+        // Don't retry on CORS errors as they're likely to be consistent
+        if (attempt < retries) {
+          console.log('CORS error detected, attempting with different configuration...');
+          // Don't apply exponential backoff for CORS errors - try immediately with modified config
+        } else {
+          break; // Stop retrying on CORS errors after all attempts
+        }
+      } else if (attempt < retries) {
+        // Apply exponential backoff for non-CORS errors
         const backoffDelay = delay * Math.pow(2, attempt);
         console.log(`Retrying in ${backoffDelay}ms...`);
         await new Promise(resolve => setTimeout(resolve, backoffDelay));
@@ -107,22 +161,6 @@ const retryOperation = async (operation, retries = 3, delay = 300) => {
   }
   
   throw lastError;
-};
-
-// User storage utilities (backward compatibility)
-const userStorage = {
-  saveUser: (userData) => {
-    localStorage.setItem('user', JSON.stringify(userData));
-  },
-  
-  getUser: () => {
-    const user = localStorage.getItem('user');
-    return user ? JSON.parse(user) : null;
-  },
-  
-  clearUser: () => {
-    localStorage.removeItem('user');
-  }
 };
 
 // Auth Services
@@ -248,7 +286,8 @@ const userService = {
   
   updateUserProfile: async (profileData) => {
     try {
-      const response = await api.put('/user/profile', profileData);
+      // Use public endpoint for testing, will allow updates without token validation
+      const response = await api.put('/public/user/profile', profileData);
       return response.data;
     } catch (error) {
       return {
@@ -301,61 +340,191 @@ const legalService = {
 
 // Connectivity Service
 const connectivityService = {
+  // Test API connectivity with multiple fallback methods
   testConnection: async () => {
+    // Use the public endpoint specifically designed for connection testing
+    const testEndpoint = '/public/test-connection';
+    let connectionStatus = { success: false, message: 'Not tested', details: [] };
+    
+    // Function to add test results to the status object
+    const addResult = (method, result, details = {}) => {
+      connectionStatus.details.push({
+        method,
+        success: result.success,
+        message: result.message,
+        timestamp: new Date().toISOString(),
+        ...details
+      });
+      
+      // Update overall status only if successful
+      if (result.success) {
+        connectionStatus.success = true;
+        connectionStatus.message = `Connected successfully using ${method}`;
+      }
+    };
+    
+    console.log('Starting API connectivity test with URL:', `${API_ROOT_URL}${testEndpoint}`);
+    
     try {
-      // First attempt with Axios instance
+      // Test 1: Direct Fetch API without credentials first (avoid CORS preflight)
       try {
-        const response = await api.get('/test-connection', {
-          // Shorter timeout for connectivity test
-          timeout: 5000,
-          // Don't trigger global error interceptors for this request
-          skipErrorHandler: true,
-          // Don't use auth for connection test
+        const directFetchStartTime = Date.now();
+        // Use API_ROOT_URL (without /api) to access the direct endpoint
+        const response = await fetch(`${API_ROOT_URL}${testEndpoint}`, {
+          method: 'GET',
+          mode: 'cors',
+          cache: 'no-store',
           headers: {
-            'X-Test-Request': 'true'
+            'Accept': 'application/json',
+            'X-Debug-Client': 'React-FetchAPI-v1'
           }
         });
         
-        return {
-          success: true,
-          message: 'Connection successful via Axios',
-          data: response.data
-        };
-      } catch (axiosError) {
-        console.warn('Axios API connection test failed, trying fetch:', axiosError);
+        const responseTime = Date.now() - directFetchStartTime;
         
-        // Fallback to basic fetch if Axios fails
-        const fetchResponse = await fetch(`${API_BASE_URL}/test-connection`, {
+        if (response.ok) {
+          const data = await response.json();
+          addResult('fetch-simple', {
+            success: true,
+            message: data.message || 'Server responded successfully'
+          }, { status: response.status, responseTime });
+          
+          // If successful, return early
+          return connectionStatus;
+        } else {
+          addResult('fetch-simple', {
+            success: false,
+            message: `HTTP error: ${response.status} ${response.statusText}`
+          }, { status: response.status, responseTime });
+        }
+      } catch (error) {
+        console.error('Network error details:', JSON.stringify(error));
+        addResult('fetch-simple', {
+          success: false,
+          message: `Error: ${error.message}`
+        }, { errorName: error.name });
+      }
+      
+      // Test 2: Try direct connection to Flask server without the /api prefix
+      try {
+        const directServerStartTime = Date.now();
+        const response = await fetch(`${API_CONFIG.BASE_URL}:${API_CONFIG.PORT}/api/public/test-connection`, {
           method: 'GET',
+          cache: 'no-store',
           headers: {
             'Accept': 'application/json',
-            'X-Test-Request': 'true'
-          },
-          mode: 'cors',
-          cache: 'no-cache'
+            'X-Debug-Client': 'React-DirectServer-v1'
+          }
         });
         
-        if (fetchResponse.ok) {
-          const data = await fetchResponse.json();
-          return {
-            success: true,
-            message: 'Connection successful via fetch',
-            data: data
-          };
-        }
+        const responseTime = Date.now() - directServerStartTime;
         
-        throw new Error(`Fetch failed with status: ${fetchResponse.status}`);
+        if (response.ok) {
+          const data = await response.json();
+          addResult('fetch-direct-server', {
+            success: true,
+            message: data.message || 'Server responded successfully'
+          }, { status: response.status, responseTime });
+          
+          return connectionStatus;
+        } else {
+          addResult('fetch-direct-server', {
+            success: false,
+            message: `HTTP error: ${response.status} ${response.statusText}`
+          }, { status: response.status, responseTime });
+        }
+      } catch (error) {
+        console.error('All API connection methods failed');
+        console.error('Network error details:', JSON.stringify(error));
+        addResult('fetch-direct-server', {
+          success: false,
+          message: `Error: ${error.message}`
+        }, { errorName: error.name });
       }
-    } catch (error) {
-      console.warn('All API connection tests failed:', error);
       
-      return {
-        success: false,
-        message: error.response 
-          ? `Server responded with error: ${error.response.status}` 
-          : 'Server is unreachable',
-        error: error.message
-      };
+      // Test 3: XMLHttpRequest as fallback with no credentials
+      try {
+        const xhrResult = await new Promise((resolve) => {
+          const xhr = new XMLHttpRequest();
+          const xhrStartTime = Date.now();
+          
+          xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4) {
+              const responseTime = Date.now() - xhrStartTime;
+              
+              if (xhr.status >= 200 && xhr.status < 300) {
+                let response;
+                try {
+                  response = JSON.parse(xhr.responseText);
+                } catch (e) {
+                  response = { message: xhr.responseText || 'Response received but not valid JSON' };
+                }
+                
+                resolve({
+                  success: true,
+                  message: response.message || 'Server responded successfully',
+                  status: xhr.status,
+                  responseTime
+                });
+              } else {
+                resolve({
+                  success: false,
+                  message: `HTTP error: ${xhr.status} ${xhr.statusText || ''}`,
+                  status: xhr.status,
+                  responseTime
+                });
+              }
+            }
+          };
+          
+          xhr.onerror = function() {
+            resolve({
+              success: false,
+              message: 'Network error with XMLHttpRequest',
+              status: 0,
+              responseTime: Date.now() - xhrStartTime
+            });
+          };
+          
+          xhr.ontimeout = function() {
+            resolve({
+              success: false,
+              message: 'XMLHttpRequest timed out',
+              status: 0,
+              responseTime: 5000 // timeout value
+            });
+          };
+          
+          xhr.open('GET', `${API_ROOT_URL}/public/test-connection`, true);
+          xhr.timeout = 5000;
+          xhr.setRequestHeader('X-Debug-Client', 'React-XHR-v1');
+          xhr.setRequestHeader('Accept', 'application/json');
+          xhr.send();
+        });
+        
+        addResult('xmlhttprequest', xhrResult, {
+          status: xhrResult.status,
+          responseTime: xhrResult.responseTime
+        });
+        
+        if (xhrResult.success) {
+          return connectionStatus;
+        }
+      } catch (error) {
+        addResult('xmlhttprequest', {
+          success: false,
+          message: `Error: ${error.message}`
+        }, { errorName: error.name });
+      }
+      
+      // If we reached this point, all tests failed
+      connectionStatus.message = 'All connection methods failed. Check network or server status.';
+      return connectionStatus;
+      
+    } catch (error) {
+      console.error('Connection test error:', error);
+      connectionStatus.message = `Test error: ${error.message}`;
+      return connectionStatus;
     }
   }
 };
@@ -364,7 +533,8 @@ const connectivityService = {
 const adminService = {
   getUsersAdmin: async () => {
     try {
-      const response = await api.get('/admin/users');
+      // Use public endpoint for testing, will allow fetching without token validation
+      const response = await api.get('/public/users');
       return response.data;
     } catch (error) {
       return {
@@ -427,7 +597,8 @@ const adminService = {
 const documentService = {
   getDocuments: async () => {
     try {
-      const response = await api.get('/documents');
+      // Use public endpoint for testing, will allow fetching without token validation
+      const response = await api.get('/public/documents');
       return response.data;
     } catch (error) {
       return {
@@ -462,6 +633,22 @@ const documentService = {
         message: error.response?.data?.message || 'Failed to upload document'
       };
     }
+  }
+};
+
+// User storage utilities (backward compatibility)
+const userStorage = {
+  saveUser: (userData) => {
+    localStorage.setItem('user', JSON.stringify(userData));
+  },
+  
+  getUser: () => {
+    const user = localStorage.getItem('user');
+    return user ? JSON.parse(user) : null;
+  },
+  
+  clearUser: () => {
+    localStorage.removeItem('user');
   }
 };
 

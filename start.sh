@@ -19,6 +19,8 @@ port_in_use() {
 # Check if port 3001 is available
 if port_in_use 3001; then
   echo -e "${YELLOW}Warning: Port 3001 is already in use. The backend may not start correctly.${NC}"
+  echo "Please stop any existing instances of the application before starting a new one."
+  exit 1
 fi
 
 # Start the Flask backend
