@@ -69,15 +69,45 @@ def basic_login():
                 "id": 1,
                 "email": data.get('email', 'user@example.com'),
                 "firstName": "Test",
-                "lastName": "User",
-                "role": "admin"
+                "lastName": "User"
             }
         })
     except Exception as e:
-        logger.error(f"Login error: {str(e)}")
+        logger.error(f"Error in basic_login: {str(e)}", exc_info=True)
         return jsonify({
             "success": False,
-            "message": f"Login error: {str(e)}"
+            "message": f"Error: {str(e)}"
+        }), 500
+
+# Standard login endpoint that the frontend expects
+@app.route('/api/login', methods=['POST', 'OPTIONS'])
+def login():
+    """Standard login endpoint that matches frontend expectations"""
+    if request.method == 'OPTIONS':
+        return '', 200
+        
+    try:
+        data = request.get_json()
+        logger.info(f"Login request data: {data}")
+        
+        # For test purposes, any credentials are accepted
+        return jsonify({
+            "success": True,
+            "message": "Login successful",
+            "token": "test-token-12345",
+            "access_token": "test-token-12345", 
+            "user": {
+                "id": 1,
+                "email": data.get('email', 'user@example.com'),
+                "firstName": "Test",
+                "lastName": "User"
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error in login: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "message": f"Error: {str(e)}"
         }), 500
 
 # Profile endpoint

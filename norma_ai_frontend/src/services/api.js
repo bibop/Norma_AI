@@ -3,8 +3,8 @@ import { toast } from 'react-toastify';
 import { getToken, clearToken, validateToken, isTokenExpired } from '../utils/tokenUtils';
 
 // Create axios instance with base URL from environment
-// Hardcoding API URL to ensure it connects to our running backend
-const API_BASE_URL = 'http://127.0.0.1:3003';
+// Fallback to direct IP address to avoid IPv6 resolution issues
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:3001';
 console.log('Using API URL:', API_BASE_URL);
 
 // Create axios instance with default config
@@ -221,7 +221,7 @@ const userService = {
         };
       }
       
-      const response = await api.get('/api/user/profile');
+      const response = await api.get('/api/profile');
       return response.data;
     } catch (error) {
       console.error('Error fetching user profile:', error);
@@ -273,7 +273,7 @@ const legalService = {
         };
       }
       
-      const response = await api.get('/api/legal/updates');
+      const response = await api.get('/api/legal-updates');
       return response.data;
     } catch (error) {
       console.error('Error fetching legal updates:', error);
