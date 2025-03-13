@@ -3,7 +3,9 @@ import { toast } from 'react-toastify';
 import { getToken, clearToken, validateToken, isTokenExpired } from '../utils/tokenUtils';
 
 // Create axios instance with base URL from environment
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:3003';
+// Hardcoding API URL to ensure it connects to our running backend
+const API_BASE_URL = 'http://127.0.0.1:3003';
+console.log('Using API URL:', API_BASE_URL);
 
 // Create axios instance with default config
 const api = axios.create({
