@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, ListGroup, Spinner, Alert, Form, Button, Badge } from 'react-bootstrap';
-import { getLegalUpdates, updateLegalUpdatesInterval } from '../services/api';
+import { legalService } from '../services/api';
 import { formatDate } from '../utils/formatters';
-import { userStorage } from '../services/api';
+import { getToken } from '../utils/tokenUtils';
 
 const LegalUpdates = () => {
   const [updates, setUpdates] = useState([]);
@@ -13,32 +13,42 @@ const LegalUpdates = () => {
   const [showIntervalEditor, setShowIntervalEditor] = useState(false);
   const [newInterval, setNewInterval] = useState(30);
   const [intervalUpdating, setIntervalUpdating] = useState(false);
-  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Get the user from storage
+  // Check authentication state
   useEffect(() => {
-    const userData = userStorage.getUser();
-    setUser(userData);
+    const token = getToken();
+    setIsAuthenticated(!!token);
+    
+    // Listen for auth changes
+    const handleAuthChange = (event) => {
+      const action = event.detail.action;
+      setIsAuthenticated(action === 'set');
+    };
+    
+    window.addEventListener('auth_token_changed', handleAuthChange);
+    
+    return () => {
+      window.removeEventListener('auth_token_changed', handleAuthChange);
+    };
   }, []);
 
   const fetchLegalUpdates = useCallback(async () => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
+    
     try {
-      if (!user) {
-        setError('User information is unavailable. Please log in again.');
-        setLoading(false);
-        return;
-      }
-
       setLoading(true);
       setError(null); // Clear previous errors
       
-      // Pass null to getLegalUpdates to let the backend use the user's preferences
-      const response = await getLegalUpdates();
+      const response = await legalService.getLegalUpdates();
       
       if (response.success) {
         setUpdates(response.updates || []);
         setUpdateInterval(response.updateInterval || 30);
-        setLastUpdated(response.lastUpdated || new Date().toISOString());
+        setLastUpdated(new Date().toISOString());
       } else {
         // Handle failure response (including network errors)
         const errorMessage = response.message || 'Failed to fetch legal updates';
@@ -47,9 +57,10 @@ const LegalUpdates = () => {
         // Keep existing updates if we have them
         if (updates.length === 0) {
           setUpdates([{
+            id: 'error',
             title: "Unable to fetch legal updates",
             summary: "An error occurred while fetching updates. Please try again later.",
-            published: new Date().toISOString(),
+            published_date: new Date().toISOString(),
             source: "System Message"
           }]);
         }
@@ -63,40 +74,23 @@ const LegalUpdates = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, updates.length]);
+  }, [isAuthenticated, updates.length]);
 
-  // Handle interval change
-  const handleIntervalChange = async () => {
-    if (newInterval < 1) {
-      setError('Interval must be at least 1 minute');
-      return;
-    }
-    
-    try {
-      setIntervalUpdating(true);
-      const response = await updateLegalUpdatesInterval(newInterval);
-      
-      if (response.success) {
-        setUpdateInterval(newInterval);
-        setShowIntervalEditor(false);
-        // Restart the update timer with the new interval
-        setLastUpdated(new Date().toISOString());
-      } else {
-        throw new Error(response.message || 'Failed to update interval');
-      }
-    } catch (err) {
-      setError(err.message || 'An error occurred while updating the interval');
-    } finally {
-      setIntervalUpdating(false);
-    }
-  };
-
+  // Refresh legal updates when authentication state changes
   useEffect(() => {
-    // Only fetch updates if we have user data
-    if (user) {
+    fetchLegalUpdates();
+  }, [isAuthenticated, fetchLegalUpdates]);
+  
+  // Auto-refresh based on the update interval
+  useEffect(() => {
+    if (!isAuthenticated || !updateInterval) return;
+    
+    const intervalId = setInterval(() => {
       fetchLegalUpdates();
-    }
-  }, [user, fetchLegalUpdates]);
+    }, updateInterval * 60 * 1000); // Convert minutes to milliseconds
+    
+    return () => clearInterval(intervalId);
+  }, [updateInterval, fetchLegalUpdates, isAuthenticated]);
 
   // Format time since last update
   const getLastUpdatedText = () => {
@@ -119,18 +113,12 @@ const LegalUpdates = () => {
     return `${diffDays} days ago`;
   };
 
-  // Auto-refresh based on the update interval
-  useEffect(() => {
-    if (!updateInterval) return;
-    
-    const intervalId = setInterval(() => {
-      fetchLegalUpdates();
-    }, updateInterval * 60 * 1000); // Convert minutes to milliseconds
-    
-    return () => clearInterval(intervalId);
-  }, [updateInterval, fetchLegalUpdates]);
+  // Handle manual refresh
+  const handleRefresh = () => {
+    fetchLegalUpdates();
+  };
 
-  if (!user) {
+  if (!isAuthenticated) {
     return (
       <Card className="mb-4">
         <Card.Header as="h5">Legal Updates</Card.Header>
@@ -151,114 +139,82 @@ const LegalUpdates = () => {
           <small className="text-muted">Based on your profile preferences</small>
         </div>
         <div className="d-flex align-items-center">
-          <span className="text-muted me-2" style={{ fontSize: '0.8rem' }}>
-            Last updated: {getLastUpdatedText()}
-          </span>
           <Button 
             variant="outline-secondary" 
             size="sm"
-            onClick={() => setShowIntervalEditor(!showIntervalEditor)}
+            onClick={handleRefresh}
+            disabled={loading}
+            className="me-2"
           >
-            <i className="bi bi-clock"></i> {updateInterval}m
+            {loading ? (
+              <Spinner animation="border" size="sm" />
+            ) : (
+              <i className="bi bi-arrow-clockwise"></i>
+            )}
           </Button>
+          <span className="text-muted me-2" style={{ fontSize: '0.8rem' }}>
+            {lastUpdated ? `Last updated: ${getLastUpdatedText()}` : ''}
+          </span>
         </div>
       </Card.Header>
       
-      {showIntervalEditor && (
-        <Card.Body className="border-bottom pb-3 pt-0 mt-2">
-          <Form className="d-flex align-items-center">
-            <Form.Group className="mb-0 d-flex align-items-center">
-              <Form.Label className="me-2 mb-0">Refresh every</Form.Label>
-              <Form.Control
-                type="number"
-                min="1"
-                value={newInterval}
-                onChange={(e) => setNewInterval(parseInt(e.target.value) || 1)}
-                style={{ width: '70px' }}
-                size="sm"
-                className="me-2"
-              />
-              <span className="me-3">minutes</span>
-            </Form.Group>
-            <Button 
-              variant="primary" 
-              size="sm" 
-              onClick={handleIntervalChange} 
-              disabled={intervalUpdating}
-              className="me-2"
-            >
-              {intervalUpdating ? (
-                <>
-                  <Spinner animation="border" size="sm" /> Saving...
-                </>
-              ) : 'Save'}
-            </Button>
-            <Button 
-              variant="outline-secondary" 
-              size="sm" 
-              onClick={() => setShowIntervalEditor(false)}
-            >
-              Cancel
-            </Button>
-          </Form>
-        </Card.Body>
-      )}
-
-      {loading ? (
+      {loading && updates.length === 0 ? (
         <Card.Body className="text-center py-5">
-          <Spinner animation="border" />
-          <p className="mt-2 text-muted">Loading the latest legal updates...</p>
+          <Spinner animation="border" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </Spinner>
+          <p className="mt-3 text-muted">Loading your legal updates...</p>
         </Card.Body>
       ) : error ? (
         <Card.Body>
           <Alert variant="danger">
-            <Alert.Heading>Error</Alert.Heading>
-            <p>{error}</p>
-            <div className="d-flex justify-content-end">
-              <Button onClick={fetchLegalUpdates} variant="outline-danger" size="sm">
+            {error}
+            <div className="mt-2">
+              <Button variant="outline-danger" size="sm" onClick={fetchLegalUpdates}>
                 Try Again
               </Button>
             </div>
           </Alert>
         </Card.Body>
+      ) : updates.length === 0 ? (
+        <Card.Body>
+          <Alert variant="info">
+            No legal updates found for your profile preferences.
+          </Alert>
+        </Card.Body>
       ) : (
         <>
-          {updates.length === 0 ? (
-            <Card.Body className="text-center py-4">
-              <i className="bi bi-info-circle" style={{ fontSize: '2rem' }}></i>
-              <p className="mt-2">No legal updates available at this time.</p>
-              <Button variant="outline-primary" size="sm" onClick={fetchLegalUpdates}>
-                <i className="bi bi-arrow-clockwise me-1"></i> Refresh
-              </Button>
-            </Card.Body>
-          ) : (
-            <>
-              <ListGroup variant="flush">
-                {updates.map((update, index) => (
-                  <ListGroup.Item key={index} className="py-3">
-                    <div className="d-flex justify-content-between align-items-center mb-1">
-                      <h6 className="mb-0">{update.title}</h6>
-                      <small className="text-muted">{formatDate(update.published)}</small>
-                    </div>
-                    <p className="mb-1 text-muted small">{update.summary}</p>
-                    <div className="d-flex justify-content-between align-items-center">
-                      <Badge bg="light" text="dark">{update.source || 'Official Source'}</Badge>
-                      {update.url && (
-                        <a href={update.url} target="_blank" rel="noopener noreferrer" className="btn btn-link btn-sm p-0">
-                          Read More
-                        </a>
-                      )}
-                    </div>
-                  </ListGroup.Item>
-                ))}
-              </ListGroup>
-              <Card.Footer className="text-center">
-                <Button variant="link" size="sm" onClick={fetchLegalUpdates}>
-                  <i className="bi bi-arrow-clockwise me-1"></i> Refresh
-                </Button>
-              </Card.Footer>
-            </>
-          )}
+          <ListGroup variant="flush">
+            {updates.map((update, index) => (
+              <ListGroup.Item key={update.id || index} className="border-bottom py-3">
+                <div className="d-flex justify-content-between align-items-start mb-1">
+                  <h6 className="mb-1">{update.title}</h6>
+                  <Badge bg="secondary" className="text-white">
+                    {update.category || update.source || 'Legal'}
+                  </Badge>
+                </div>
+                <p className="text-muted mb-1" style={{ fontSize: '0.9rem' }}>
+                  {update.summary || update.description}
+                </p>
+                <div className="d-flex justify-content-between align-items-center">
+                  <small className="text-muted">
+                    {formatDate(update.published_date || update.date || update.published)}
+                  </small>
+                  {update.url && (
+                    <Button 
+                      variant="link" 
+                      size="sm" 
+                      href={update.url} 
+                      target="_blank" 
+                      className="p-0"
+                    >
+                      Read More
+                    </Button>
+                  )}
+                </div>
+              </ListGroup.Item>
+            ))}
+          </ListGroup>
         </>
       )}
     </Card>

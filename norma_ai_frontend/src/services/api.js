@@ -1,173 +1,411 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { setToken, getToken, clearToken } from '../utils/tokenUtils';
+import { getToken, clearToken, validateToken, isTokenExpired } from '../utils/tokenUtils';
 
-// Create axios instance with base configuration
+// Create axios instance with base URL from environment
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:3003';
+
+// Create axios instance with default config
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:3001/api', // Use direct IP instead of localhost
+  baseURL: API_BASE_URL,
   timeout: 15000,
   headers: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
   },
-  withCredentials: true, // Include cookies in cross-site requests
-  allowAbsoluteUrls: true // Allow absolute URLs for full domain requests
+  withCredentials: true, // Important for CORS with credentials
 });
 
-// Request interceptor to add auth token to requests
+// Request interceptor to add authorization header
 api.interceptors.request.use(
-  config => {
+  (config) => {
     const token = getToken();
+    
+    // Add token to request if available
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
-      // Safe logging with null check
-      try {
-        console.log('Adding token to request:', `Bearer ${token.substring(0, 5)}...`);
-      } catch (e) {
-        console.log('Token available but cannot log its contents');
-      }
-    } else {
-      console.log('No token available for request');
     }
+    
     return config;
   },
-  error => {
-    console.error('Request error:', error);
+  (error) => {
+    console.error('API Request Error:', error);
     return Promise.reject(error);
   }
 );
 
-// Response interceptor to handle errors
+// Response interceptor for error handling
 api.interceptors.response.use(
-  response => {
-    // Ensure data is properly structured in response
-    return response.data ? response.data : response;
-  },
-  error => {
-    // Enhanced error handling with detailed logging
-    console.error('API Response Error:', error);
-    
-    if (!error.response) {
-      // Network error - server unreachable
-      console.error('Network error detected - server might be unreachable');
-      return Promise.reject({
-        success: false,
-        isNetworkError: true,
-        message: 'Network error. Server is unreachable.',
-        status: 'network_error'
+  (response) => response,
+  (error) => {
+    if (error.response) {
+      // Handle 401 Unauthorized errors
+      if (error.response.status === 401) {
+        // Only clear token if it's present and we're not on login/register routes
+        const token = getToken();
+        if (token) {
+          console.log('Authentication error. Clearing token...');
+          clearToken();
+          
+          // Don't show toast for login attempts
+          const isLoginAttempt = error.config.url.includes('/login') || 
+                               error.config.url.includes('/register');
+          
+          if (!isLoginAttempt) {
+            toast.error('Your session has expired. Please log in again.');
+            
+            // Redirect to login page if needed and not already there
+            if (!window.location.pathname.includes('/login')) {
+              window.location.href = '/login';
+            }
+          }
+        }
+      } else if (error.response.status === 403) {
+        toast.error('You do not have permission to access this resource.');
+      } else if (error.response.status >= 500) {
+        toast.error('Server error. Please try again later.');
+      }
+    } else if (error.request) {
+      // Request was made but no response received (network error)
+      const errorMessage = 'Unable to connect to the server. Please check your connection.';
+      console.error(errorMessage, error);
+      
+      // Dispatch network error event for NetworkStatusContext to handle
+      const networkErrorEvent = new CustomEvent('api_network_error', {
+        detail: { message: errorMessage }
       });
+      window.dispatchEvent(networkErrorEvent);
+      
+      toast.error(errorMessage);
+    } else {
+      // Error in setting up the request
+      console.error('API configuration error:', error.message);
+      toast.error('Error in application. Please refresh the page.');
     }
     
-    // Server responded with error status
-    const status = error.response.status;
-    const responseData = error.response.data || {};
-    
-    console.error(`Server responded with status ${status}:`, responseData);
-    
-    return Promise.reject({
-      success: false,
-      isNetworkError: false,
-      message: responseData.message || `Error ${status}: Server error`,
-      status: status,
-      data: responseData
-    });
+    return Promise.reject(error);
   }
 );
 
-// Authentication services
-export const authService = {
+// Generic retry function with exponential backoff
+const retryOperation = async (operation, retries = 3, delay = 300) => {
+  let lastError;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      console.warn(`Operation failed, attempt ${attempt + 1}/${retries + 1}`, error);
+      lastError = error;
+      
+      if (attempt < retries) {
+        const backoffDelay = delay * Math.pow(2, attempt);
+        console.log(`Retrying in ${backoffDelay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+      }
+    }
+  }
+  
+  throw lastError;
+};
+
+// User storage utilities (backward compatibility)
+const userStorage = {
+  saveUser: (userData) => {
+    localStorage.setItem('user', JSON.stringify(userData));
+  },
+  
+  getUser: () => {
+    const user = localStorage.getItem('user');
+    return user ? JSON.parse(user) : null;
+  },
+  
+  clearUser: () => {
+    localStorage.removeItem('user');
+  }
+};
+
+// Auth Services
+const authService = {
   login: async (credentials) => {
     try {
-      const response = await api.post('/basic-login', credentials);
+      const response = await api.post('/api/login', credentials);
+      return response.data;
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Login failed. Please try again.'
+      };
+    }
+  },
+  
+  register: async (userData) => {
+    try {
+      const response = await api.post('/api/register', userData);
+      return response.data;
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Registration failed. Please try again.'
+      };
+    }
+  },
+  
+  logout: async () => {
+    try {
+      // First try to call logout API if server requires it
+      try {
+        await api.post('/api/logout');
+      } catch (logoutError) {
+        console.log('Logout API call failed, clearing local token only', logoutError);
+      }
       
-      // Handle response structure: extract data from response if needed
-      const responseData = response.data || response;
+      // Always clear token locally regardless of API call result
+      clearToken();
       
-      // Save auth token from response - handle both token formats for compatibility
-      if (responseData) {
-        // Try both token field formats that might come from the backend
-        const token = responseData.token || responseData.access_token;
-        if (token) {
-          setToken(token);
-          console.log('Token saved after login');
-        } else {
-          console.warn('Login successful but no token received in response data:', responseData);
+      return {
+        success: true,
+        message: 'Logged out successfully'
+      };
+    } catch (error) {
+      // Clear token even if logout API fails
+      clearToken();
+      
+      return {
+        success: true, // Return success anyway since we cleared local token
+        message: 'Logged out locally'
+      };
+    }
+  },
+  
+  checkAuth: async () => {
+    // First check token validity locally
+    const isValid = validateToken();
+    
+    if (!isValid) {
+      return {
+        success: false,
+        message: 'Token is invalid or expired'
+      };
+    }
+    
+    // Then verify with server
+    try {
+      const response = await api.get('/api/verify-token');
+      return response.data;
+    } catch (error) {
+      // Token verification failed, clear it
+      if (error.response?.status === 401) {
+        clearToken();
+      }
+      
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Session verification failed'
+      };
+    }
+  }
+};
+
+// User Profile Services
+const userService = {
+  getUserProfile: async (retry = true) => {
+    try {
+      // Check if user is authenticated
+      const token = getToken();
+      if (!token) {
+        return {
+          success: false,
+          message: 'Authentication required'
+        };
+      }
+      
+      const response = await api.get('/api/user/profile');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      
+      // If 401 error but we have a token, try refreshing and retry once
+      if (retry && error.response?.status === 401 && getToken()) {
+        try {
+          // Try to verify token
+          const authCheck = await authService.checkAuth();
+          if (authCheck.success) {
+            // Retry profile fetch with new token
+            return userService.getUserProfile(false);
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed during profile fetch:', refreshError);
         }
       }
       
-      return responseData;
-    } catch (error) {
-      console.error('Error during login:', error);
-      throw error;
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to load user profile'
+      };
     }
   },
   
-  logout: () => {
-    clearToken();
-    return { success: true };
-  },
-  
-  validateToken: async () => {
+  updateUserProfile: async (profileData) => {
     try {
-      const response = await api.get('/auth/validate-token');
-      return response;
+      const response = await api.put('/api/user/profile', profileData);
+      return response.data;
     } catch (error) {
-      clearToken(); // Clear invalid token
-      throw error;
-    }
-  },
-  
-  getCurrentUser: async () => {
-    try {
-      return await api.get('/profile');
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-      throw error;
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to update profile'
+      };
     }
   }
 };
 
-// User profile services
-export const userService = {
-  getProfile: async () => {
+// Legal Updates Services
+const legalService = {
+  getLegalUpdates: async (retry = true) => {
     try {
-      return await api.get('/profile');
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-      throw error;
-    }
-  },
-  
-  updateProfile: async (profileData) => {
-    try {
-      return await api.put('/profile', profileData);
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      throw error;
-    }
-  }
-};
-
-// Legal updates services
-export const legalService = {
-  getLegalUpdates: async () => {
-    try {
-      return await api.get('/legal-updates');
+      // Check if user is authenticated
+      const token = getToken();
+      if (!token) {
+        return {
+          success: false,
+          message: 'Authentication required'
+        };
+      }
+      
+      const response = await api.get('/api/legal/updates');
+      return response.data;
     } catch (error) {
       console.error('Error fetching legal updates:', error);
-      throw error;
+      
+      // If 401 error but we have a token, try refreshing and retry once
+      if (retry && error.response?.status === 401 && getToken()) {
+        try {
+          // Try to verify token
+          const authCheck = await authService.checkAuth();
+          if (authCheck.success) {
+            // Retry updates fetch with new token
+            return legalService.getLegalUpdates(false);
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed during legal updates fetch:', refreshError);
+        }
+      }
+      
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to load legal updates'
+      };
+    }
+  }
+};
+
+// Connectivity Service
+const connectivityService = {
+  testConnection: async () => {
+    try {
+      const response = await api.get('/api/test-connection', {
+        // Shorter timeout for connectivity test
+        timeout: 5000,
+        // Don't trigger global error interceptors for this request
+        skipErrorHandler: true,
+        // Don't use auth for connection test
+        headers: {
+          'X-Test-Request': 'true'
+        }
+      });
+      
+      return {
+        success: true,
+        message: 'Connection successful',
+        data: response.data
+      };
+    } catch (error) {
+      console.warn('API connection test failed:', error);
+      
+      return {
+        success: false,
+        message: error.response 
+          ? `Server responded with error: ${error.response.status}` 
+          : 'Server is unreachable',
+        error: error.message
+      };
+    }
+  }
+};
+
+// Admin services
+const adminService = {
+  getUsersAdmin: async () => {
+    try {
+      const response = await api.get('/api/admin/users');
+      return response.data;
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to fetch users'
+      };
+    }
+  },
+  
+  getUserByIdAdmin: async (userId) => {
+    try {
+      const response = await api.get(`/api/admin/users/${userId}`);
+      return response.data;
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to fetch user'
+      };
+    }
+  },
+  
+  updateUserAdmin: async (userId, userData) => {
+    try {
+      const response = await api.put(`/api/admin/users/${userId}`, userData);
+      return response.data;
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to update user'
+      };
+    }
+  },
+  
+  createUserAdmin: async (userData) => {
+    try {
+      const response = await api.post('/api/admin/users', userData);
+      return response.data;
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to create user'
+      };
+    }
+  },
+  
+  deleteUserAdmin: async (userId) => {
+    try {
+      const response = await api.delete(`/api/admin/users/${userId}`);
+      return response.data;
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to delete user'
+      };
     }
   }
 };
 
 // Document services
-export const documentService = {
+const documentService = {
   getDocuments: async () => {
     try {
-      return await api.get('/documents');
+      const response = await api.get('/api/documents');
+      return response.data;
     } catch (error) {
-      console.error('Error fetching documents:', error);
-      throw error;
+      return {
+        success: false, 
+        message: error.response?.data?.message || 'Failed to fetch documents'
+      };
     }
   },
   
@@ -183,313 +421,79 @@ export const documentService = {
         });
       }
       
-      return await api.post('/documents/upload', formData, {
+      const response = await api.post('/api/documents/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       });
-    } catch (error) {
-      console.error('Error uploading document:', error);
-      throw error;
-    }
-  }
-};
-
-// Network status check service
-export const networkService = {
-  checkConnection: async () => {
-    try {
-      return await api.get('/test-connection');
-    } catch (error) {
-      console.error('Error checking connection:', error);
-      throw error;
-    }
-  }
-};
-
-// Shared user data storage with memory fallback
-export const userStorage = {
-  inMemoryUser: null,
-  setUser: (userData) => {
-    // Always set in memory first
-    userStorage.inMemoryUser = userData;
-    try {
-      localStorage.setItem('user', JSON.stringify(userData));
-    } catch (error) {
-      console.warn('Error storing user data in local storage, using memory fallback');
-    }
-  },
-  getUser: () => {
-    try {
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        try {
-          const parsedUser = JSON.parse(userData);
-          userStorage.inMemoryUser = parsedUser; // Update memory cache
-          return parsedUser;
-        } catch (e) {
-          console.warn('Error parsing user data from local storage');
-        }
-      }
-      return userStorage.inMemoryUser;
-    } catch (error) {
-      console.warn('Error accessing user data from local storage, using memory fallback');
-      return userStorage.inMemoryUser;
-    }
-  },
-  removeUser: () => {
-    userStorage.inMemoryUser = null;
-    try {
-      localStorage.removeItem('user');
-    } catch (error) {
-      console.warn('Error removing user data from local storage');
-    }
-  }
-};
-
-// Utility function for retrying API calls with exponential backoff
-export const retryRequest = async (requestFn, maxRetries = 3) => {
-  let retries = 0;
-  while (retries < maxRetries) {
-    try {
-      return await requestFn();
-    } catch (error) {
-      retries++;
-      if (retries >= maxRetries || !error.isNetworkError) {
-        throw error;
-      }
-      console.log(`Retrying request (${retries}/${maxRetries}) after network error...`);
-      // Exponential backoff: 1s, 2s, 4s, etc.
-      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, retries - 1)));
-    }
-  }
-};
-
-/**
- * Upload a document with retry capability
- * @param {File} file - The file to upload
- * @param {string} [type='document'] - The type of upload
- * @param {Object} [metadata={}] - Additional metadata for the upload
- * @returns {Promise<Object>} Response with upload result
- */
-export const uploadDocumentWithRetry = async (file, type = 'document', metadata = {}) => {
-  return retryRequest(async () => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('type', type);
-    
-    if (metadata) {
-      formData.append('metadata', JSON.stringify(metadata));
-    }
-    
-    try {
-      // Use the raw axios instance for this request to avoid response transformation
-      const response = await api.post('/documents/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        // Increase timeout for large file uploads
-        timeout: 60000, // 60 seconds
-      });
       
-      return response;
+      return response.data;
     } catch (error) {
-      console.error('Document upload error:', error);
-      throw error;
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to upload document'
+      };
     }
-  }, 3); // Try up to 3 times
-};
-
-/**
- * Get all users (debug view)
- * @returns {Promise<Object>} Response with users array
- */
-export const getUsers = async () => {
-  try {
-    return await api.get('/users');
-  } catch (error) {
-    console.error('Error fetching users:', error);
-    return { 
-      success: false, 
-      message: error?.message || 'Error fetching users',
-      users: []
-    };
   }
 };
 
-/**
- * Get all users (admin only)
- * @param {number} page - Page number for pagination
- * @param {number} perPage - Items per page
- * @returns {Promise<Object>} Response with user data and pagination info
- */
-export const getUsersAdmin = async (page = 1, perPage = 10) => {
-  try {
-    return await api.get(`/admin/users?page=${page}&per_page=${perPage}`);
-  } catch (error) {
-    console.error('Error fetching users:', error);
-    return { 
-      success: false, 
-      message: error?.message || 'Error fetching users',
-      users: [],
-      pagination: { page: 1, total_pages: 1 }
-    };
-  }
-};
+// Backward compatibility functions
+const getUserProfile = userService.getUserProfile;
+const updateUserProfile = userService.updateUserProfile;
+const getLegalUpdates = legalService.getLegalUpdates;
+const getUsers = async () => adminService.getUsersAdmin();
+const getUsersAdmin = adminService.getUsersAdmin;
+const getUserByIdAdmin = adminService.getUserByIdAdmin;
+const updateUserAdmin = adminService.updateUserAdmin;
+const createUserAdmin = adminService.createUserAdmin;
+const deleteUserAdmin = adminService.deleteUserAdmin;
+const retryRequest = retryOperation;
+const uploadDocumentWithRetry = documentService.uploadDocument;
 
-/**
- * Get a user by ID (admin only)
- * @param {string} userId - The ID of the user to fetch
- * @returns {Promise<Object>} Response with user data
- */
-export const getUserByIdAdmin = async (userId) => {
-  try {
-    return await api.get(`/admin/users/${userId}`);
-  } catch (error) {
-    console.error('Error fetching user details:', error);
-    return { 
-      success: false, 
-      message: error?.message || 'Error fetching user details' 
-    };
-  }
-};
-
-/**
- * Create a new user (admin only)
- * @param {Object} userData - User data to create
- * @returns {Promise<Object>} Response with created user data
- */
-export const createUserAdmin = async (userData) => {
-  try {
-    return await api.post('/admin/users', userData);
-  } catch (error) {
-    console.error('Error creating user:', error);
-    return { 
-      success: false, 
-      message: error?.message || 'Error creating user' 
-    };
-  }
-};
-
-/**
- * Update a user (admin only)
- * @param {string} userId - The ID of the user to update
- * @param {Object} userData - User data to update
- * @returns {Promise<Object>} Response with updated user data
- */
-export const updateUserAdmin = async (userId, userData) => {
-  try {
-    return await api.put(`/admin/users/${userId}`, userData);
-  } catch (error) {
-    console.error('Error updating user:', error);
-    return { 
-      success: false, 
-      message: error?.message || 'Error updating user' 
-    };
-  }
-};
-
-/**
- * Delete a user (admin only)
- * @param {string} userId - The ID of the user to delete
- * @returns {Promise<Object>} Response indicating success or failure
- */
-export const deleteUserAdmin = async (userId) => {
-  try {
-    return await api.delete(`/admin/users/${userId}`);
-  } catch (error) {
-    console.error('Error deleting user:', error);
-    return { 
-      success: false, 
-      message: error?.message || 'Error deleting user' 
-    };
-  }
-};
-
-/**
- * Get user profile
- * @returns {Promise<Object>} Response with user profile data
- */
-export const getUserProfile = async () => {
-  try {
-    return await api.get('/profile');
-  } catch (error) {
-    console.error('Error fetching user profile:', error);
-    return { 
-      success: false, 
-      message: error?.message || 'Error fetching user profile' 
-    };
-  }
-};
-
-/**
- * Update user profile
- * @param {Object} profileData - Profile data to update
- * @returns {Promise<Object>} Response with updated profile data
- */
-export const updateUserProfile = async (profileData) => {
-  try {
-    return await api.put('/profile', profileData);
-  } catch (error) {
-    console.error('Error updating user profile:', error);
-    return { 
-      success: false, 
-      message: error?.message || 'Error updating user profile' 
-    };
-  }
-};
-
-/**
- * Get legal updates based on user's profile preferences
- */
-export const getLegalUpdates = async () => {
-  try {
-    const response = await api.get('/legal-updates');
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching legal updates:', error);
-    return {
-      success: false,
-      message: error.response?.data?.message || 'Failed to fetch legal updates',
-      updates: []
-    };
-  }
-};
-
-/**
- * Update the refresh interval for legal updates
- */
-export const updateLegalUpdatesInterval = async (minutes) => {
-  try {
-    const response = await api.put('/settings/legal-updates-interval', {
-      interval: minutes
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error updating legal updates interval:', error);
-    return {
-      success: false,
-      message: error.response?.data?.message || 'Failed to update refresh interval'
-    };
-  }
-};
-
-// User Jurisdictions and Legal Update Sources
-export const updateUserJurisdictions = (primaryJurisdiction, selectedJurisdictions) => {
-  return api.post('/users/preferences/jurisdictions', {
+// User Jurisdictions and Legal Update Sources (backward compatibility)
+const updateUserJurisdictions = (primaryJurisdiction, selectedJurisdictions) => {
+  return api.post('/api/users/preferences/jurisdictions', {
     preferred_jurisdiction: primaryJurisdiction,
     preferred_jurisdictions: selectedJurisdictions
   });
 };
 
-export const updateUserLegalSources = (selectedSources) => {
-  return api.post('/users/preferences/legal-sources', {
+const updateUserLegalSources = (selectedSources) => {
+  return api.post('/api/users/preferences/legal-sources', {
     preferred_legal_sources: selectedSources
   });
 };
 
-export const getAvailableJurisdictions = () => {
-  return api.get('/jurisdictions');
+const getAvailableJurisdictions = () => {
+  return api.get('/api/jurisdictions');
 };
 
+// Export services
+export {
+  api,
+  authService,
+  userService,
+  legalService,
+  connectivityService,
+  adminService,
+  documentService,
+  userStorage,
+  retryOperation,
+  retryRequest,
+  getUserProfile,
+  updateUserProfile,
+  getLegalUpdates,
+  getUsers,
+  getUsersAdmin,
+  getUserByIdAdmin,
+  updateUserAdmin,
+  createUserAdmin,
+  deleteUserAdmin,
+  updateUserJurisdictions,
+  updateUserLegalSources,
+  getAvailableJurisdictions,
+  uploadDocumentWithRetry
+};
+
+// Default export for backward compatibility
 export default api;
