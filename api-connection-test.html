@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Norma AI API Connection Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .endpoint-container {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .endpoint-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .btn {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .btn-secondary {
+            background-color: #2196F3;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Norma AI API Connection Test</h1>
+    <p>This utility tests the connection to various API endpoints using different methods</p>
+    
+    <div class="endpoint-container">
+        <div class="endpoint-title">API Base Configuration</div>
+        <input type="text" id="baseUrl" value="http://127.0.0.1:3001" style="width: 250px; padding: 5px;"> 
+        <button class="btn" onclick="updateBaseUrl()">Update</button>
+        <div>Current API Root: <span id="currentApiRoot"></span></div>
+    </div>
+
+    <div class="endpoint-container">
+        <div class="endpoint-title">1. Basic Test Connection (CORS Test)</div>
+        <p>Tests the API connection to the /api/public/test-connection endpoint using fetch with no credentials</p>
+        <button class="btn" onclick="testFetch('/api/public/test-connection')">Test Connection (No Credentials)</button>
+        <div class="result" id="fetchResult">Results will appear here...</div>
+    </div>
+
+    <div class="endpoint-container">
+        <div class="endpoint-title">2. Test Connection - XMLHttpRequest</div>
+        <button class="btn" onclick="testXhr('/api/public/test-connection')">Test With XHR</button>
+        <div class="result" id="xhrResult">Results will appear here...</div>
+    </div>
+
+    <div class="endpoint-container">
+        <div class="endpoint-title">3. CORS Diagnostic Test</div>
+        <button class="btn" onclick="testFetch('/api/public/cors-test')">Test CORS</button>
+        <div class="result" id="corsResult">Results will appear here...</div>
+    </div>
+
+    <div class="endpoint-container">
+        <div class="endpoint-title">4. Jurisdictions Endpoint</div>
+        <button class="btn" onclick="testFetch('/api/public/jurisdictions')">Fetch Jurisdictions</button>
+        <button class="btn btn-secondary" onclick="testXhr('/api/public/jurisdictions')">XHR Jurisdictions</button>
+        <div class="result" id="jurisdictionsResult">Results will appear here...</div>
+    </div>
+
+    <div class="endpoint-container">
+        <div class="endpoint-title">5. Test Path Duplication Issue</div>
+        <button class="btn" onclick="testFetch('/public/jurisdictions')">Test Without /api Prefix</button>
+        <div class="result" id="pathDuplicationResult">Results will appear here...</div>
+    </div>
+
+    <script>
+        // Initialize with the current base URL
+        let apiBaseUrl = 'http://127.0.0.1:3001';
+        document.getElementById('baseUrl').value = apiBaseUrl;
+        document.getElementById('currentApiRoot').textContent = apiBaseUrl;
+
+        // Update the base URL
+        function updateBaseUrl() {
+            apiBaseUrl = document.getElementById('baseUrl').value;
+            document.getElementById('currentApiRoot').textContent = apiBaseUrl;
+        }
+
+        // Test with Fetch API
+        async function testFetch(endpoint) {
+            const resultId = endpoint.includes('cors-test') ? 'corsResult' : 
+                             endpoint.includes('jurisdictions') ? 
+                             (endpoint.includes('/api/') ? 'jurisdictionsResult' : 'pathDuplicationResult') : 
+                             'fetchResult';
+            
+            const resultElement = document.getElementById(resultId);
+            resultElement.innerHTML = "Testing...";
+            
+            try {
+                const timestamp = new Date().getTime();
+                const url = `${apiBaseUrl}${endpoint}?t=${timestamp}`;
+                
+                resultElement.innerHTML += `\nFetching: ${url}`;
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Test-Connection': 'true'
+                    },
+                    credentials: 'omit',  // Don't send cookies
+                    mode: 'cors'  // Explicitly request CORS mode
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                resultElement.innerHTML = `<span class="success">SUCCESS!</span>\nStatus: ${response.status}\n\nResponse: ${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                resultElement.innerHTML = `<span class="error">ERROR!</span>\n${error.message}`;
+                console.error('Fetch error:', error);
+            }
+        }
+
+        // Test with XMLHttpRequest
+        function testXhr(endpoint) {
+            const resultId = endpoint.includes('jurisdictions') ? 'jurisdictionsResult' : 'xhrResult';
+            const resultElement = document.getElementById(resultId);
+            resultElement.innerHTML = "Testing...";
+            
+            try {
+                const xhr = new XMLHttpRequest();
+                const timestamp = new Date().getTime();
+                const url = `${apiBaseUrl}${endpoint}?t=${timestamp}`;
+                
+                resultElement.innerHTML += `\nFetching: ${url}`;
+                
+                xhr.open('GET', url);
+                xhr.setRequestHeader('Accept', 'application/json');
+                xhr.setRequestHeader('X-Test-Connection', 'true');
+                xhr.withCredentials = false;  // Don't send cookies
+                
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        const data = JSON.parse(xhr.responseText);
+                        resultElement.innerHTML = `<span class="success">SUCCESS!</span>\nStatus: ${xhr.status}\n\nResponse: ${JSON.stringify(data, null, 2)}`;
+                    } else {
+                        resultElement.innerHTML = `<span class="error">ERROR!</span>\nStatus: ${xhr.status} ${xhr.statusText}`;
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    resultElement.innerHTML = `<span class="error">ERROR!</span>\nNetwork error occurred`;
+                    console.error('XHR network error');
+                };
+                
+                xhr.send();
+            } catch (error) {
+                resultElement.innerHTML = `<span class="error">ERROR!</span>\n${error.message}`;
+                console.error('XHR error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

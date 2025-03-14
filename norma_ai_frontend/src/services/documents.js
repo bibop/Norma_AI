@@ -16,7 +16,7 @@ export const uploadDocument = async (file, jurisdiction, metadata = {}) => {
       jurisdiction
     };
     
-    // Use the new retry-capable upload function
+    // Use the retry-capable upload function with correct path
     const response = await uploadDocumentWithRetry(file, 'document', uploadMetadata);
     
     return {
@@ -48,12 +48,39 @@ export const uploadDocument = async (file, jurisdiction, metadata = {}) => {
  */
 export const getUserDocuments = async () => {
   try {
-    return await api.get('/documents');
+    console.log('Fetching documents...');
+    // Ensure we're using the correct endpoint without duplicate /api prefix
+    const response = await api.get('/api/documents');
+    console.log('Documents response:', response.data);
+    return response.data;
   } catch (error) {
     console.error('Error fetching documents:', error);
+    
+    // Check for network errors
+    if (error.isNetworkError || !error.response) {
+      return {
+        success: false,
+        message: 'Network error: Cannot connect to server',
+        isNetworkError: true,
+        documents: []
+      };
+    }
+    
+    // Handle authentication errors
+    if (error.response && (error.response.status === 401 || error.response.status === 422)) {
+      return {
+        success: false,
+        message: 'Authentication error: Please log in again',
+        isAuthError: true,
+        documents: []
+      };
+    }
+    
+    // Default error handling
     return {
       success: false,
-      message: error?.message || 'Failed to fetch documents'
+      message: error.response?.data?.message || 'Failed to load documents',
+      documents: []
     };
   }
 };
@@ -65,12 +92,14 @@ export const getUserDocuments = async () => {
  */
 export const getDocumentDetails = async (documentId) => {
   try {
-    return await api.get(`/document/${documentId}/compliance`);
+    const response = await api.get(`/api/document/${documentId}/compliance`);
+    return response.data;
   } catch (error) {
     console.error(`Error fetching document ${documentId} details:`, error);
     return {
       success: false,
-      message: error?.message || `Failed to fetch document ${documentId} details`
+      message: `Error fetching document details: ${error.message}`,
+      details: {}
     };
   }
 };
@@ -78,16 +107,17 @@ export const getDocumentDetails = async (documentId) => {
 /**
  * Delete a document
  * @param {number} documentId - The ID of the document to delete
- * @returns {Promise<Object>} Response indicating success or failure
+ * @returns {Promise<Object>} Response with success status
  */
 export const deleteDocument = async (documentId) => {
   try {
-    return await api.delete(`/document/${documentId}`);
+    const response = await api.delete(`/api/document/${documentId}`);
+    return response.data;
   } catch (error) {
     console.error(`Error deleting document ${documentId}:`, error);
     return {
       success: false,
-      message: error?.message || `Failed to delete document ${documentId}`
+      message: `Error deleting document: ${error.message}`
     };
   }
 };
@@ -95,18 +125,19 @@ export const deleteDocument = async (documentId) => {
 /**
  * Re-analyze a document for compliance
  * @param {number} documentId - The ID of the document to re-analyze
- * @param {string} jurisdiction - Optional jurisdiction code for compliance analysis
+ * @param {string} jurisdiction - The jurisdiction to analyze against
  * @returns {Promise<Object>} Response with updated document data
  */
 export const reanalyzeDocument = async (documentId, jurisdiction) => {
   try {
     const payload = jurisdiction ? { jurisdiction } : {};
-    return await api.post(`/document/${documentId}/analyze`, payload);
+    const response = await api.post(`/api/document/${documentId}/analyze`, payload);
+    return response.data;
   } catch (error) {
     console.error(`Error reanalyzing document ${documentId}:`, error);
     return {
       success: false,
-      message: error?.message || `Failed to re-analyze document ${documentId}`
+      message: `Error reanalyzing document: ${error.message}`
     };
   }
 };
@@ -117,7 +148,7 @@ export const reanalyzeDocument = async (documentId, jurisdiction) => {
  */
 export const getAvailableJurisdictions = async () => {
   try {
-    return await api.get('/jurisdictions');
+    return await api.get('/api/jurisdictions');
   } catch (error) {
     console.error('Error fetching jurisdictions:', error);
     return {
@@ -134,7 +165,7 @@ export const getAvailableJurisdictions = async () => {
  */
 export const updateUserJurisdiction = async (jurisdiction) => {
   try {
-    return await api.put('/user/jurisdiction', { jurisdiction });
+    return await api.put('user/jurisdiction', { jurisdiction });
   } catch (error) {
     console.error('Error updating user jurisdiction:', error);
     return {

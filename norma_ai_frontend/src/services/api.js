@@ -4,43 +4,45 @@ import { getToken, setToken, removeToken, isTokenExpired, tokenStorage } from '.
 
 // IMPORTANT: Create a new API instance with correct configuration
 // This ensures our endpoint fixes are properly applied
-console.log('Using API URL:', API_BASE_URL);
+console.log('Using API Root URL:', API_ROOT_URL);
 
 // Initialize Axios instance with default configuration
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_ROOT_URL,
   timeout: API_CONFIG.TIMEOUT,
-  withCredentials: true, // Enable cookies and auth headers
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
-  }
+    'Accept': 'application/json'
+  },
+  // Don't automatically send credentials for all requests
+  withCredentials: false
 });
 
-// Log all API requests for debugging
+// Add request interceptor that logs requests
 api.interceptors.request.use(
   config => {
+    // Force IPv4 for all requests to avoid IPv6 resolution issues on macOS
+    if (config.url && (config.url.includes('localhost') || config.baseURL?.includes('localhost'))) {
+      config.url = config.url.replace('localhost', '127.0.0.1');
+      if (config.baseURL) {
+        config.baseURL = config.baseURL.replace('localhost', '127.0.0.1');
+      }
+    }
+    
+    // Add credentials only for authenticated endpoints
+    config.withCredentials = !config.url.includes('/public/');
+    
+    // Add auth token to requests if available
     const token = getToken();
-    
-    // Add token to request if available
     if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`;
     }
     
-    // Log outgoing requests when in development mode
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`API Request: ${config.method?.toUpperCase() || 'UNKNOWN'} ${config.url}`, {
-        headers: config.headers,
-        withCredentials: config.withCredentials,
-        baseURL: config.baseURL
-      });
-    }
-    
+    console.log(`API Request [${config.method}] ${config.url}`, config);
     return config;
   },
   error => {
-    console.error('API Request Configuration Error:', error);
+    console.error('API Request Error:', error);
     return Promise.reject(error);
   }
 );
@@ -48,7 +50,7 @@ api.interceptors.request.use(
 // Response interceptor for error handling
 api.interceptors.response.use(
   response => response,
-  error => {
+  async error => {
     if (error.response) {
       // Handle 401 Unauthorized errors
       if (error.response.status === 401) {
@@ -63,15 +65,35 @@ api.interceptors.response.use(
                                error.config.url.includes('/register');
           
           if (!isLoginAttempt) {
-            // toast.error('Your session has expired. Please log in again.');
-            
             // Redirect to login page if needed and not already there
             if (!window.location.pathname.includes('/login')) {
               window.location.href = '/login';
             }
           }
         }
-      } else if (error.response.status === 403) {
+      } 
+      // Handle 422 Unprocessable Entity errors (often JWT validation issues)
+      else if (error.response.status === 422) {
+        console.error('422 Validation Error:', error.response.data);
+        
+        // Always consider 422 errors on authenticated endpoints as token issues
+        // This helps with the PostgreSQL/Flask backend JWT validation
+        const isPublicEndpoint = error.config.url.includes('/public/') || 
+                               error.config.url.includes('/auth/login') ||
+                               error.config.url.includes('/register');
+        
+        if (!isPublicEndpoint) {
+          console.log('Likely JWT validation error. Clearing token and attempting relogin...');
+          removeToken();
+          
+          // Force redirect to login page
+          if (window.location.pathname !== '/login') {
+            console.log('Redirecting to login due to invalid token');
+            window.location.href = '/login';
+          }
+        }
+      } 
+      else if (error.response.status === 403) {
         // toast.error('You do not have permission to access this resource.');
       } else if (error.response.status >= 500) {
         // toast.error('Server error. Please try again later.');
@@ -164,129 +186,109 @@ const retryOperation = async (operation, retries = 3, delay = 300) => {
 };
 
 // Test connection using multiple methods to diagnose connectivity issues
-const testConnection = async (baseUrl = API_BASE_URL) => {
-  console.log('Starting API connectivity test with URL:', baseUrl);
+const testConnection = async (apiUrl = API_ROOT_URL) => {
+  console.log('[Connection Test] Testing API connection to:', apiUrl);
   
-  // Use the public endpoint specifically designed for connection testing
-  const testEndpoints = [
-    '/public/test-connection',
-    '/public/jurisdictions', 
-    '/public/legal-updates'
-  ];
-  let connectionStatus = { success: false, message: 'Not tested', details: [] };
+  // Use a direct IP address to avoid IPv6 resolution issues
+  const directUrl = apiUrl.replace('localhost', '127.0.0.1');
   
-  // Try each endpoint with different methods
-  for (const endpoint of testEndpoints) {
+  // Create a clean endpoint path - ensure we're not duplicating the /api prefix
+  const endpoint = '/api/public/test-connection';
+  const fullUrl = `${directUrl}${endpoint}`;
+  
+  console.log('[Connection Test] Testing full URL:', fullUrl);
+  
+  // Add timestamp to prevent caching
+  const params = { t: new Date().getTime() };
+  
+  // Add special header to identify test requests
+  const headers = {
+    'Accept': 'application/json',
+    'X-Test-Connection': 'true'
+  };
+  
+  // Test using multiple methods to ensure robustness
+  try {
+    // Method 1: Try using fetch (browser native) with no credentials
+    let result;
     try {
-      // Test with Fetch API first
-      const response = await fetch(`${baseUrl}${endpoint}`, {
+      console.log('[Connection Test] Trying fetch method with URL:', fullUrl);
+      const fetchResponse = await fetch(fullUrl + '?' + new URLSearchParams(params), {
         method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-          'X-Test-Connection': 'true'
-        }
+        credentials: 'omit', // Don't send cookies for connection test
+        headers: headers,
+        mode: 'cors' // Explicitly set CORS mode
       });
       
-      if (response.ok) {
-        connectionStatus.success = true;
-        connectionStatus.message = `Connected successfully using fetch-${endpoint}`;
-        connectionStatus.details.push({
-          method: 'fetch',
-          endpoint,
-          status: response.status,
-          ok: response.ok
-        });
-        return connectionStatus;
+      if (!fetchResponse.ok) {
+        throw new Error(`HTTP error! Status: ${fetchResponse.status}`);
       }
       
-      connectionStatus.details.push({
-        method: 'fetch',
-        endpoint,
-        status: response.status,
-        ok: response.ok,
-        statusText: response.statusText
-      });
-    } catch (error) {
-      connectionStatus.details.push({
-        method: 'fetch',
-        endpoint,
-        error: error.message
-      });
-    }
-    
-    // If fetch failed, try with XMLHttpRequest
-    try {
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', `${baseUrl}${endpoint}`, false); // Synchronous for simplicity
-      xhr.setRequestHeader('Accept', 'application/json');
-      xhr.setRequestHeader('X-Test-Connection', 'true');
-      xhr.withCredentials = true;
-      xhr.send(null);
+      result = await fetchResponse.json();
+      console.log('[Connection Test] Fetch method succeeded:', result);
+      return { success: true, method: 'fetch', data: result };
+    } catch (fetchError) {
+      console.error('[Connection Test] Fetch method failed:', fetchError);
       
-      if (xhr.status >= 200 && xhr.status < 300) {
-        connectionStatus.success = true;
-        connectionStatus.message = `Connected successfully using xhr-${endpoint}`;
-        connectionStatus.details.push({
-          method: 'xhr',
-          endpoint,
-          status: xhr.status,
-          statusText: xhr.statusText
-        });
-        return connectionStatus;
-      }
-      
-      connectionStatus.details.push({
-        method: 'xhr',
-        endpoint,
-        status: xhr.status,
-        statusText: xhr.statusText
-      });
-    } catch (error) {
-      connectionStatus.details.push({
-        method: 'xhr',
-        endpoint,
-        error: error.message
-      });
-    }
-    
-    // If both failed, try jQuery as a last resort
-    if (window.jQuery) {
+      // Method 2: Try using axios (with credentials)
       try {
-        const response = await $.ajax({
-          url: `${baseUrl}${endpoint}`,
-          type: 'GET',
-          dataType: 'json',
-          xhrFields: {
-            withCredentials: true
-          },
-          headers: {
-            'Accept': 'application/json',
-            'X-Test-Connection': 'true'
-          }
+        const axiosResponse = await axios.get(fullUrl, {
+          params,
+          headers,
+          withCredentials: false, // Don't send cookies for connection test
+          allowAbsoluteUrls: true // This is important for some configurations
         });
         
-        connectionStatus.success = true;
-        connectionStatus.message = `Connected successfully using jquery-${endpoint}`;
-        connectionStatus.details.push({
-          method: 'jquery',
-          endpoint,
-          status: 200,
-          data: response
-        });
-        return connectionStatus;
-      } catch (error) {
-        connectionStatus.details.push({
-          method: 'jquery',
-          endpoint,
-          error: error.message
-        });
+        result = axiosResponse.data;
+        console.log('[Connection Test] Axios method succeeded:', result);
+        return { success: true, method: 'axios', data: result };
+      } catch (axiosError) {
+        console.error('[Connection Test] Axios method failed:', axiosError);
+        
+        // Method 3: Last resort - try a more basic approach
+        try {
+          // Create a new XMLHttpRequest as fallback
+          const promise = new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', fullUrl + '?' + new URLSearchParams(params));
+            xhr.setRequestHeader('Accept', 'application/json');
+            xhr.setRequestHeader('X-Test-Connection', 'true');
+            xhr.withCredentials = false; // Don't send cookies for connection test
+            
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(JSON.parse(xhr.responseText));
+              } else {
+                reject(new Error(`XHR error, status: ${xhr.status}`));
+              }
+            };
+            
+            xhr.onerror = () => reject(new Error('XHR network error'));
+            xhr.send();
+          });
+          
+          result = await promise;
+          console.log('[Connection Test] Fallback method succeeded:', result);
+          return { success: true, method: 'fallback', data: result };
+        } catch (fallbackError) {
+          console.error('[Connection Test] Fallback method failed:', fallbackError);
+          throw new Error('All connection methods failed');
+        }
       }
     }
+  } catch (error) {
+    const failures = [
+      { method: 'fetch', error: 'Failed to fetch' },
+      { method: 'axios', error: 'Network Error' },
+      { method: 'fallback', error: 'Network Error' }
+    ];
+    
+    console.error('[ERROR] [Connection Test] All methods failed:', failures);
+    console.error('[ERROR] [Connection Test] All connection methods failed:', error);
+    
+    throw error;
   }
-  
-  return connectionStatus;
-};
+}
 
 // Auth Services
 const authService = {
@@ -383,7 +385,7 @@ const userService = {
         };
       }
       
-      const response = await api.get('/profile');
+      const response = await api.get('/api/profile');
       return response.data;
     } catch (error) {
       console.error('Error fetching user profile:', error);
@@ -411,8 +413,7 @@ const userService = {
   
   updateUserProfile: async (profileData) => {
     try {
-      // Use public endpoint for testing, will allow updates without token validation
-      const response = await api.put('/public/user/profile', profileData);
+      const response = await api.put('/api/profile', profileData);
       return response.data;
     } catch (error) {
       return {
@@ -435,7 +436,7 @@ const legalService = {
         };
       }
       
-      const response = await api.get('/legal-updates');
+      const response = await api.get('/api/public/legal-updates');
       return response.data;
     } catch (error) {
       console.error('Error fetching legal updates:', error);
@@ -471,8 +472,7 @@ const connectivityService = {
 const adminService = {
   getUsersAdmin: async () => {
     try {
-      // Use public endpoint for testing, will allow fetching without token validation
-      const response = await api.get('/public/users');
+      const response = await api.get('/admin/users');
       return response.data;
     } catch (error) {
       return {
@@ -535,13 +535,13 @@ const adminService = {
 const documentService = {
   getDocuments: async () => {
     try {
-      // Use public endpoint for testing, will allow fetching without token validation
-      const response = await api.get('/public/documents');
+      const response = await api.get('/documents');
       return response.data;
     } catch (error) {
       return {
-        success: false, 
-        message: error.response?.data?.message || 'Failed to fetch documents'
+        success: false,
+        message: `Error fetching documents: ${error.message}`,
+        documents: []
       };
     }
   },
@@ -549,6 +549,7 @@ const documentService = {
   uploadDocument: async (documentData) => {
     try {
       const formData = new FormData();
+      
       formData.append('file', documentData.file);
       formData.append('title', documentData.title);
       
@@ -558,7 +559,7 @@ const documentService = {
         });
       }
       
-      const response = await api.post('/documents/upload', formData, {
+      const response = await api.post('/api/documents/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
@@ -566,9 +567,11 @@ const documentService = {
       
       return response.data;
     } catch (error) {
+      console.error('Document upload error:', error);
       return {
         success: false,
-        message: error.response?.data?.message || 'Failed to upload document'
+        message: error.response?.data?.message || 'Failed to upload document',
+        document: null
       };
     }
   }
@@ -605,30 +608,40 @@ const uploadDocumentWithRetry = documentService.uploadDocument;
 
 // User Jurisdictions and Legal Update Sources (backward compatibility)
 const updateUserJurisdictions = (primaryJurisdiction, selectedJurisdictions) => {
-  return api.post('/users/preferences/jurisdictions', {
+  return api.post('/api/users/preferences/jurisdictions', {
     preferred_jurisdiction: primaryJurisdiction,
     preferred_jurisdictions: selectedJurisdictions
   });
 };
 
 const updateUserLegalSources = (selectedSources) => {
-  return api.post('/users/preferences/legal-sources', {
+  return api.post('/api/users/preferences/legal-sources', {
     preferred_legal_sources: selectedSources
   });
 };
 
 const getAvailableJurisdictions = async () => {
-  try {
-    const response = await api.get('/public/jurisdictions');
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching jurisdictions:', error);
-    return {
-      success: false,
-      message: error.response?.data?.message || 'Failed to fetch jurisdictions',
-      jurisdictions: []
-    };
-  }
+  // There's a path mismatch - the backend expects /api/public/jurisdictions
+  // Use API_ROOT_URL instead of API_BASE_URL to avoid duplicate /api prefix
+  const endpoint = '/api/public/jurisdictions';
+  const url = `${API_ROOT_URL}${endpoint}`;
+  
+  // Use axios directly to have more control over the request
+  return axios.get(url, { 
+    params: { t: new Date().getTime() }, // Add timestamp to prevent caching
+    headers: {
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  })
+  .then(response => {
+    console.log('Jurisdictions response:', response.data);
+    return response.data.jurisdictions || [];
+  })
+  .catch(error => {
+    console.error('Error fetching available jurisdictions:', error);
+    return [];
+  });
 };
 
 // Export services
@@ -660,3 +673,5 @@ export {
 
 // Default export for backward compatibility
 export default api;
+
+const MOCK_LEGAL_UPDATES = []; // Empty array as fallback

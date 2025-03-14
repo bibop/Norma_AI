@@ -75,7 +75,7 @@ const Documents = ({ user }) => {
             </Alert>
           ) : (
             <Row xs={1} md={2} className="g-4">
-              {documents.map((document) => (
+              {documents.filter(doc => doc && doc.id).map((document) => (
                 <Col key={document.id}>
                   <DocumentCard document={document} onDelete={handleDocumentDelete} />
                 </Col>

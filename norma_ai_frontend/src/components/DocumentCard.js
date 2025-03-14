@@ -25,6 +25,10 @@ const DocumentCard = ({ document, onDelete }) => {
   };
 
   const getFileTypeBadge = (fileType) => {
+    if (!fileType) {
+      return <Badge bg="secondary">Unknown</Badge>;
+    }
+    
     switch (fileType.toLowerCase()) {
       case 'pdf':
         return <Badge bg="danger">PDF</Badge>;

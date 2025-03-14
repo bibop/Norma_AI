@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { connectivityService } from '../services/api';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, API_ROOT_URL } from '../config';
 
 // Create a context for network status
 const NetworkStatusContext = createContext({
@@ -31,8 +31,8 @@ export const NetworkStatusProvider = ({ children }) => {
     setIsLoading(true);
     
     try {
-      console.log('Testing API connection...');
-      const result = await connectivityService.testConnection();
+      console.log('Testing API connection to:', API_ROOT_URL);
+      const result = await connectivityService.testConnection(API_ROOT_URL);
       
       console.log('Connection test result:', result);
       
@@ -196,7 +196,7 @@ export const NetworkStatusProvider = ({ children }) => {
       error,
       isLoading,
       checkServerConnection,
-      apiBaseUrl: API_BASE_URL
+      apiBaseUrl: API_ROOT_URL
     }}>
       {children}
     </NetworkStatusContext.Provider>

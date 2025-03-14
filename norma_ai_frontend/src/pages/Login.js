@@ -220,10 +220,10 @@ const Login = ({ onLoginSuccess }) => {
     setError(null);
     
     try {
-      console.log(`Attempting login to ${BACKEND_URL}/api/basic-login`);
+      console.log(`Attempting login to ${BACKEND_URL}/api/auth/login`);
       
       // Using direct IP address (127.0.0.1) instead of localhost to avoid IPv6 issues
-      const response = await fetch(`${BACKEND_URL}/api/basic-login`, {
+      const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -250,11 +250,20 @@ const Login = ({ onLoginSuccess }) => {
       }
       
       const data = await response.json();
-      console.log("Login successful:", data);
+      console.log("Login successful data:", data);
       
-      if (data.success) {
-        toast.success('Login successful! Welcome back');
+      // Check if we got a valid token
+      if (data.success && data.access_token) {
+        console.log("Saving token:", data.access_token.substring(0, 10) + "...");
+        
+        // Save token - makes it available to the API service
         saveToken(data.access_token);
+        
+        // Store in localStorage as well for debugging
+        localStorage.setItem('debug_token_saved', 'true');
+        localStorage.setItem('debug_token_time', new Date().toISOString());
+        
+        toast.success('Login successful! Welcome back');
         
         if (onLoginSuccess) {
           onLoginSuccess(data.user, data.access_token);
@@ -263,7 +272,7 @@ const Login = ({ onLoginSuccess }) => {
         // Redirect to dashboard or home page
         navigate('/');
       } else {
-        throw new Error(data.message || 'Login failed');
+        throw new Error(data.message || 'Login failed - no valid token received');
       }
     } catch (err) {
       console.error('Login error:', err);

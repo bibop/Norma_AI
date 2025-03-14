@@ -20,12 +20,5 @@ const API_ROOT_URL = `${API_CONFIG.BASE_URL}:${API_CONFIG.PORT}`;
 export {
   API_CONFIG,
   API_BASE_URL,
-  API_ROOT_URL,
-};
-
-// For backward compatibility
-export default {
-  API_BASE_URL,
-  API_ROOT_URL,
-  API_CONFIG,
+  API_ROOT_URL
 };

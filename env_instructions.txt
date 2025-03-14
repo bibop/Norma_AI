@@ -1,5 +1,5 @@
 IMPORTANT: Create a .env.local file in the norma_ai_frontend directory with this content:
 
-REACT_APP_API_URL=http://localhost:5000/api
+REACT_APP_API_URL=http://localhost:3001/api
 
 This file takes highest precedence in React's environment variable loading and will override any other API URL settings.

@@ -1,4 +1,5 @@
 import os
+import traceback
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -8,92 +9,137 @@ from services.document_service import analyze_document, allowed_file
 
 documents_bp = Blueprint('documents', __name__)
 
-@documents_bp.route('/upload', methods=['POST'])
+@documents_bp.route('/documents/upload', methods=['POST'])
 @jwt_required()
 def upload_document():
     """Upload a document for compliance analysis."""
-    user_id = int(get_jwt_identity())
-    
-    # Check if the request has a file
-    if 'file' not in request.files:
-        return jsonify({"success": False, "message": "No file part"}), 400
-    
-    file = request.files['file']
-    
-    # Check if file is empty
-    if file.filename == '':
-        return jsonify({"success": False, "message": "No file selected"}), 400
-    
-    # Check if file type is allowed
-    if not allowed_file(file.filename):
-        return jsonify({"success": False, "message": "File type not allowed"}), 400
-    
-    # Get jurisdiction from request or user preferences
-    jurisdiction = request.form.get('jurisdiction')
-    if not jurisdiction:
-        # Get user's preferred jurisdiction if not specified in request
-        user = User.query.get(user_id)
-        jurisdiction = user.preferred_jurisdiction
+    try:
+        current_app.logger.info("Document upload initiated")
+        user_id = int(get_jwt_identity())
         
-    # Ensure jurisdiction has the correct format (main-sub or just main)
-    if jurisdiction and '-' not in jurisdiction:
-        # If only main jurisdiction is provided, append default sub-jurisdiction
-        main_jurisdiction = jurisdiction
-        # Check if we have hierarchical jurisdictions data for this main jurisdiction
-        if main_jurisdiction in ['us', 'eu', 'uk', 'ca', 'au', 'br', 'jp', 'sg', 'global']:
-            if main_jurisdiction == 'us':
-                jurisdiction = f"{main_jurisdiction}-federal"
-            elif main_jurisdiction == 'eu':
-                jurisdiction = f"{main_jurisdiction}-general"
-            elif main_jurisdiction == 'uk':
-                jurisdiction = f"{main_jurisdiction}-general"
-            elif main_jurisdiction == 'ca':
-                jurisdiction = f"{main_jurisdiction}-federal"
-            elif main_jurisdiction == 'au':
-                jurisdiction = f"{main_jurisdiction}-federal"
-            else:
-                jurisdiction = f"{main_jurisdiction}-general"
-    
-    # Secure the filename and save the file
-    original_filename = file.filename
-    filename = secure_filename(file.filename)
-    file_extension = filename.rsplit('.', 1)[1].lower()
-    unique_filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{user_id}_{filename}"
-    
-    # Ensure upload directory exists
-    os.makedirs(current_app.config['UPLOAD_FOLDER'], exist_ok=True)
-    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-    
-    file.save(file_path)
-    file_size = os.path.getsize(file_path)
-    
-    # Create document record in database
-    new_document = Document(
-        filename=unique_filename,
-        original_filename=original_filename,
-        file_type=file_extension,
-        file_size=file_size,
-        user_id=user_id,
-        jurisdiction=jurisdiction
-    )
-    
-    db.session.add(new_document)
-    db.session.commit()
-    
-    # Analyze the document for compliance
-    analysis_result = analyze_document(file_path, new_document.id, jurisdiction)
-    
-    # Update document with analysis results
-    new_document.compliance_results = analysis_result
-    new_document.status = 'analyzed'
-    new_document.last_analyzed = datetime.utcnow()
-    db.session.commit()
-    
-    return jsonify({
-        "success": True,
-        "message": "Document uploaded and analyzed successfully",
-        "document": new_document.to_dict()
-    }), 201
+        # Check if the request has a file
+        if 'file' not in request.files:
+            current_app.logger.warning("No file part in request")
+            return jsonify({"success": False, "message": "No file part"}), 400
+        
+        file = request.files['file']
+        
+        # Check if file is empty
+        if file.filename == '':
+            current_app.logger.warning("No file selected")
+            return jsonify({"success": False, "message": "No file selected"}), 400
+        
+        # Check if file type is allowed
+        if not allowed_file(file.filename):
+            current_app.logger.warning(f"File type not allowed: {file.filename}")
+            return jsonify({"success": False, "message": "File type not allowed"}), 400
+        
+        # Get jurisdiction from request or user preferences
+        jurisdiction = request.form.get('jurisdiction')
+        if not jurisdiction:
+            # Get user's preferred jurisdiction if not specified in request
+            user = User.query.get(user_id)
+            if not user:
+                current_app.logger.error(f"User {user_id} not found")
+                return jsonify({"success": False, "message": "User not found"}), 404
+                
+            jurisdiction = user.preferred_jurisdiction
+            
+        # Ensure jurisdiction has the correct format (main-sub or just main)
+        if jurisdiction and '-' not in jurisdiction:
+            # If only main jurisdiction is provided, append default sub-jurisdiction
+            main_jurisdiction = jurisdiction
+            # Check if we have hierarchical jurisdictions data for this main jurisdiction
+            if main_jurisdiction in ['us', 'eu', 'uk', 'ca', 'au', 'br', 'jp', 'sg', 'global']:
+                if main_jurisdiction == 'us':
+                    jurisdiction = f"{main_jurisdiction}-federal"
+                elif main_jurisdiction == 'eu':
+                    jurisdiction = f"{main_jurisdiction}-general"
+                elif main_jurisdiction == 'uk':
+                    jurisdiction = f"{main_jurisdiction}-general"
+                elif main_jurisdiction == 'ca':
+                    jurisdiction = f"{main_jurisdiction}-federal"
+                elif main_jurisdiction == 'au':
+                    jurisdiction = f"{main_jurisdiction}-federal"
+                else:
+                    jurisdiction = f"{main_jurisdiction}-general"
+        
+        # Secure the filename and save the file
+        original_filename = file.filename
+        filename = secure_filename(file.filename)
+        file_extension = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+        unique_filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{user_id}_{filename}"
+        
+        # Ensure upload directory exists
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'uploads')
+        os.makedirs(upload_folder, exist_ok=True)
+        file_path = os.path.join(upload_folder, unique_filename)
+        
+        current_app.logger.info(f"Saving file to {file_path}")
+        file.save(file_path)
+        
+        if not os.path.exists(file_path):
+            current_app.logger.error(f"Failed to save file to {file_path}")
+            return jsonify({"success": False, "message": "Failed to save file"}), 500
+            
+        file_size = os.path.getsize(file_path)
+        
+        # Create document record in database
+        new_document = Document(
+            filename=unique_filename,
+            original_filename=original_filename,
+            file_type=file_extension,
+            file_size=file_size,
+            user_id=user_id,
+            jurisdiction=jurisdiction,
+            status='uploaded'  # Set initial status to uploaded
+        )
+        
+        db.session.add(new_document)
+        db.session.commit()
+        current_app.logger.info(f"Document record created with ID: {new_document.id}")
+        
+        try:
+            # Analyze the document for compliance
+            current_app.logger.info(f"Starting analysis for document {new_document.id}")
+            analysis_result = analyze_document(file_path, new_document.id, jurisdiction)
+            
+            # Update document with analysis results
+            new_document.compliance_results = analysis_result
+            new_document.status = 'analyzed'
+            new_document.last_analyzed = datetime.utcnow()
+            db.session.commit()
+            current_app.logger.info(f"Analysis completed for document {new_document.id}")
+        except Exception as analysis_error:
+            # If analysis fails, still keep the document but mark it as failed analysis
+            current_app.logger.error(f"Analysis failed for document {new_document.id}: {str(analysis_error)}")
+            current_app.logger.error(traceback.format_exc())
+            new_document.status = 'analysis_failed'
+            new_document.analysis_error = str(analysis_error)
+            db.session.commit()
+            
+            # Still return success for the upload, but note the analysis failure
+            return jsonify({
+                "success": True,
+                "message": "Document uploaded, but analysis failed. Please try again later.",
+                "document": new_document.to_dict(),
+                "error": str(analysis_error)
+            }), 201
+        
+        return jsonify({
+            "success": True,
+            "message": "Document uploaded and analyzed successfully",
+            "document": new_document.to_dict()
+        }), 201
+        
+    except Exception as e:
+        current_app.logger.error(f"Document upload failed: {str(e)}")
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({
+            "success": False,
+            "message": "An error occurred during document upload",
+            "error": str(e)
+        }), 500
 
 @documents_bp.route('/documents', methods=['GET'])
 @jwt_required()
