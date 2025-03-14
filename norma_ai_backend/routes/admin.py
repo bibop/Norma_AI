@@ -7,11 +7,15 @@ from services.auth_service import validate_registration_data
 
 admin_bp = Blueprint('admin', __name__)
 
-@admin_bp.route('/admin/users', methods=['GET'])
+@admin_bp.route('/api/admin/users', methods=['GET', 'OPTIONS'])
 @jwt_required()
 @admin_required()
 def get_users():
     """Get all users (admin only)."""
+    
+    # Handle OPTIONS requests for CORS preflight
+    if request.method == 'OPTIONS':
+        return jsonify({"message": "OK"}), 200
     
     # Get query parameters for pagination
     page = request.args.get('page', 1, type=int)
@@ -37,11 +41,16 @@ def get_users():
         }
     }), 200
 
-@admin_bp.route('/admin/users', methods=['POST'])
+@admin_bp.route('/api/admin/users', methods=['POST', 'OPTIONS'])
 @jwt_required()
 @admin_required()
 def create_user():
     """Create a new user (admin only)."""
+    
+    # Handle OPTIONS requests for CORS preflight
+    if request.method == 'OPTIONS':
+        return jsonify({"message": "OK"}), 200
+    
     data = request.get_json()
     
     # Validate user data
@@ -73,11 +82,16 @@ def create_user():
         "user": new_user.to_dict()
     }), 201
 
-@admin_bp.route('/admin/users/<int:user_id>', methods=['GET'])
+@admin_bp.route('/api/admin/users/<int:user_id>', methods=['GET', 'OPTIONS'])
 @jwt_required()
 @admin_required()
 def get_user(user_id):
     """Get a specific user (admin only)."""
+    
+    # Handle OPTIONS requests for CORS preflight
+    if request.method == 'OPTIONS':
+        return jsonify({"message": "OK"}), 200
+    
     user = User.query.get(user_id)
     
     if not user:
@@ -89,11 +103,16 @@ def get_user(user_id):
         "user": user.to_dict()
     }), 200
 
-@admin_bp.route('/admin/users/<int:user_id>', methods=['PUT'])
+@admin_bp.route('/api/admin/users/<int:user_id>', methods=['PUT', 'OPTIONS'])
 @jwt_required()
 @admin_required()
 def update_user(user_id):
     """Update a user (admin only)."""
+    
+    # Handle OPTIONS requests for CORS preflight
+    if request.method == 'OPTIONS':
+        return jsonify({"message": "OK"}), 200
+    
     user = User.query.get(user_id)
     
     if not user:
@@ -136,11 +155,16 @@ def update_user(user_id):
         "user": user.to_dict()
     }), 200
 
-@admin_bp.route('/admin/users/<int:user_id>', methods=['DELETE'])
+@admin_bp.route('/api/admin/users/<int:user_id>', methods=['DELETE', 'OPTIONS'])
 @jwt_required()
 @admin_required()
 def delete_user(user_id):
     """Delete a user (admin only)."""
+    
+    # Handle OPTIONS requests for CORS preflight
+    if request.method == 'OPTIONS':
+        return jsonify({"message": "OK"}), 200
+    
     user = User.query.get(user_id)
     
     if not user:

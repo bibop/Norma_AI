@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Connection Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .endpoint {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .endpoint h3 {
+            margin-top: 0;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 15px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow: auto;
+            max-height: 200px;
+        }
+        .method-section {
+            margin-top: 20px;
+        }
+        .method-section h4 {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>API Connection Test</h1>
+    <p>This page tests API connectivity between the frontend and backend using multiple methods.</p>
+    
+    <div class="endpoint">
+        <h3>Test Connection (Public)</h3>
+        <button id="testPublicConnectionFetch">Test with Fetch</button>
+        <button id="testPublicConnectionXhr">Test with XMLHttpRequest</button>
+        <button id="testPublicConnectionJQuery">Test with jQuery</button>
+        <div id="publicConnectionResult"></div>
+    </div>
+    
+    <div class="endpoint">
+        <h3>Test Legal Updates</h3>
+        <button id="testLegalUpdatesFetch">Test with Fetch</button>
+        <button id="testLegalUpdatesXhr">Test with XMLHttpRequest</button>
+        <button id="testLegalUpdatesJQuery">Test with jQuery</button>
+        <div id="legalUpdatesResult"></div>
+    </div>
+    
+    <div class="endpoint">
+        <h3>Test Jurisdictions</h3>
+        <button id="testJurisdictionsFetch">Test with Fetch</button>
+        <button id="testJurisdictionsXhr">Test with XMLHttpRequest</button>
+        <button id="testJurisdictionsJQuery">Test with jQuery</button>
+        <div id="jurisdictionsResult"></div>
+    </div>
+    
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        const API_BASE = 'http://127.0.0.1:3001';
+        // Add debug logging
+        console.log('Connection test running with API_BASE:', API_BASE);
+        
+        function formatResponse(response) {
+            try {
+                return JSON.stringify(response, null, 2);
+            } catch (e) {
+                return response;
+            }
+        }
+        
+        function showResult(elementId, success, methodName, message, data = null) {
+            const element = document.getElementById(elementId);
+            
+            // Create or get the method section
+            let methodSection = document.getElementById(`${elementId}-${methodName}`);
+            if (!methodSection) {
+                methodSection = document.createElement('div');
+                methodSection.id = `${elementId}-${methodName}`;
+                methodSection.className = 'method-section';
+                methodSection.innerHTML = `<h4>${methodName}</h4>`;
+                element.appendChild(methodSection);
+            }
+            
+            methodSection.innerHTML = `
+                <h4>${methodName}</h4>
+                <p class="${success ? 'success' : 'error'}">${message}</p>
+                ${data ? `<pre>${formatResponse(data)}</pre>` : ''}
+            `;
+        }
+        
+        // Test with Fetch API
+        async function testWithFetch(url, elementId, methodName) {
+            showResult(elementId, true, methodName, 'Testing...', null);
+            console.log(`Testing ${url} with Fetch API...`);
+            
+            try {
+                const startTime = performance.now();
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'include'
+                });
+                const endTime = performance.now();
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult(elementId, true, methodName, `Success! (${(endTime - startTime).toFixed(2)}ms)`, data);
+                } else {
+                    const errorDetails = {
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: await response.text()
+                    };
+                    showResult(elementId, false, methodName, `Error: ${response.status} ${response.statusText}`, errorDetails);
+                }
+            } catch (error) {
+                console.error(`Fetch error for ${url}:`, error);
+                showResult(elementId, false, methodName, `Error: ${error.message}`, { 
+                    error: error.toString(),
+                    stack: error.stack
+                });
+            }
+        }
+        
+        // Test with XMLHttpRequest
+        function testWithXhr(url, elementId, methodName) {
+            showResult(elementId, true, methodName, 'Testing...', null);
+            
+            const xhr = new XMLHttpRequest();
+            const startTime = performance.now();
+            
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    const endTime = performance.now();
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            showResult(elementId, true, methodName, `Success! (${(endTime - startTime).toFixed(2)}ms)`, data);
+                        } catch (e) {
+                            showResult(elementId, false, methodName, `Error parsing response: ${e.message}`, { response: xhr.responseText });
+                        }
+                    } else {
+                        const errorDetails = {
+                            status: xhr.status,
+                            statusText: xhr.statusText,
+                            response: xhr.responseText
+                        };
+                        showResult(elementId, false, methodName, `Error: ${xhr.status} ${xhr.statusText}`, errorDetails);
+                    }
+                }
+            };
+            
+            xhr.onerror = function(error) {
+                showResult(elementId, false, methodName, `Network Error`, { error: 'Connection failed' });
+            };
+            
+            xhr.open('GET', url, true);
+            xhr.withCredentials = true;
+            xhr.send();
+        }
+        
+        // Test with jQuery
+        function testWithJQuery(url, elementId, methodName) {
+            showResult(elementId, true, methodName, 'Testing...', null);
+            
+            const startTime = performance.now();
+            $.ajax({
+                url: url,
+                type: 'GET',
+                xhrFields: {
+                    withCredentials: true
+                },
+                success: function(data, textStatus, xhr) {
+                    const endTime = performance.now();
+                    showResult(elementId, true, methodName, `Success! (${(endTime - startTime).toFixed(2)}ms)`, data);
+                },
+                error: function(xhr, textStatus, error) {
+                    const errorDetails = {
+                        status: xhr.status,
+                        statusText: xhr.statusText,
+                        responseText: xhr.responseText
+                    };
+                    
+                    try {
+                        errorDetails.response = JSON.parse(xhr.responseText);
+                    } catch (e) {
+                        // Not JSON response
+                    }
+                    
+                    showResult(elementId, false, methodName, `Error: ${error || textStatus}`, errorDetails);
+                }
+            });
+        }
+        
+        // Public Connection Test Buttons
+        document.getElementById('testPublicConnectionFetch').addEventListener('click', function() {
+            testWithFetch(`${API_BASE}/api/public/test-connection`, 'publicConnectionResult', 'Fetch API');
+        });
+        
+        document.getElementById('testPublicConnectionXhr').addEventListener('click', function() {
+            testWithXhr(`${API_BASE}/api/public/test-connection`, 'publicConnectionResult', 'XMLHttpRequest');
+        });
+        
+        document.getElementById('testPublicConnectionJQuery').addEventListener('click', function() {
+            testWithJQuery(`${API_BASE}/api/public/test-connection`, 'publicConnectionResult', 'jQuery');
+        });
+        
+        // Legal Updates Test Buttons
+        document.getElementById('testLegalUpdatesFetch').addEventListener('click', function() {
+            testWithFetch(`${API_BASE}/api/public/legal-updates`, 'legalUpdatesResult', 'Fetch API');
+        });
+        
+        document.getElementById('testLegalUpdatesXhr').addEventListener('click', function() {
+            testWithXhr(`${API_BASE}/api/public/legal-updates`, 'legalUpdatesResult', 'XMLHttpRequest');
+        });
+        
+        document.getElementById('testLegalUpdatesJQuery').addEventListener('click', function() {
+            testWithJQuery(`${API_BASE}/api/public/legal-updates`, 'legalUpdatesResult', 'jQuery');
+        });
+        
+        // Jurisdictions Test Buttons
+        document.getElementById('testJurisdictionsFetch').addEventListener('click', function() {
+            testWithFetch(`${API_BASE}/api/public/jurisdictions`, 'jurisdictionsResult', 'Fetch API');
+        });
+        
+        document.getElementById('testJurisdictionsXhr').addEventListener('click', function() {
+            testWithXhr(`${API_BASE}/api/public/jurisdictions`, 'jurisdictionsResult', 'XMLHttpRequest');
+        });
+        
+        document.getElementById('testJurisdictionsJQuery').addEventListener('click', function() {
+            testWithJQuery(`${API_BASE}/api/public/jurisdictions`, 'jurisdictionsResult', 'jQuery');
+        });
+    </script>
+</body>
+</html>

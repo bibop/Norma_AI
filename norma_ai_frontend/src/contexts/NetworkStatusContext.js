@@ -7,7 +7,9 @@ import { API_BASE_URL } from '../config';
 const NetworkStatusContext = createContext({
   isOnline: true,
   lastChecked: null,
-  serverAvailable: false
+  serverAvailable: false,
+  error: null,
+  isLoading: false
 });
 
 /**
@@ -21,58 +23,80 @@ export const NetworkStatusProvider = ({ children }) => {
   const [hasShownOfflineToast, setHasShownOfflineToast] = useState(false);
   const [hasShownOnlineToast, setHasShownOnlineToast] = useState(false);
   const [isCheckingConnection, setIsCheckingConnection] = useState(false);
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Function to actively check server connectivity with multiple methods
   const checkServerConnection = async (showToasts = true) => {
-    // Avoid multiple simultaneous connection checks
-    if (isCheckingConnection) {
-      return serverAvailable;
-    }
+    setIsLoading(true);
     
     try {
-      setIsCheckingConnection(true);
-      setLastChecked(new Date());
-      
-      // Use the comprehensive connectivity service from api.js
+      console.log('Testing API connection...');
       const result = await connectivityService.testConnection();
       
-      // Update server availability status
-      const wasAvailable = serverAvailable;
-      setServerAvailable(result.success);
+      console.log('Connection test result:', result);
       
-      if (showToasts) {
-        // Show toast notifications only when status changes
-        if (result.success && !wasAvailable) {
-          toast.success('Server connection established!', {
-            autoClose: 3000,
-            toastId: 'server-online-notification'
+      if (result.success) {
+        setServerAvailable(true);
+        setError(null);
+        if (showToasts) {
+          toast.success('Connected to server successfully!');
+        }
+      } else {
+        // If the test failed, provide specific error information
+        setServerAvailable(false);
+        
+        if (result.details?.some(d => d.errorType === 'CORS error')) {
+          setError({
+            type: 'CORS',
+            message: 'CORS policy blocked connection',
+            details: result.message
           });
-          setHasShownOfflineToast(false);
-          setHasShownOnlineToast(true);
-        } else if (!result.success && wasAvailable) {
-          toast.error('Connection to server lost. Retrying...', {
-            autoClose: false,
-            toastId: 'server-offline-notification'
+          if (showToasts) {
+            toast.error('CORS policy blocked API connection. Please check the server configuration.', {
+              autoClose: 5000
+            });
+          }
+        } else if (result.details?.some(d => d.status === 0)) {
+          setError({
+            type: 'NETWORK',
+            message: 'Network error - server unreachable',
+            details: result.message
           });
-          setHasShownOfflineToast(true);
-          setHasShownOnlineToast(false);
+          if (showToasts) {
+            toast.error('Server is unreachable. Please check if the server is running.', {
+              autoClose: 5000
+            });
+          }
+        } else {
+          setError({
+            type: 'UNKNOWN',
+            message: result.message || 'Unknown error occurred',
+            details: JSON.stringify(result.details || {})
+          });
+          if (showToasts) {
+            toast.error(`Connection error: ${result.message || 'Unknown error'}`, {
+              autoClose: 5000
+            });
+          }
         }
       }
-      
-      // Log detailed connection results for debugging
-      console.log(`Server connection check result: ${result.success ? 'CONNECTED' : 'DISCONNECTED'}`, {
-        message: result.message,
-        details: result.details,
-        timestamp: new Date().toISOString()
-      });
-      
-      return result.success;
     } catch (error) {
+      // Handle any unexpected errors in the connection test itself
       console.error('Error checking server connection:', error);
       setServerAvailable(false);
-      return false;
+      setError({
+        type: 'EXCEPTION',
+        message: error.message || 'Exception occurred during connection check',
+        details: error.stack || ''
+      });
+      if (showToasts) {
+        toast.error(`Connection check failed: ${error.message || 'Unknown error'}`, {
+          autoClose: 5000
+        });
+      }
     } finally {
-      setIsCheckingConnection(false);
+      setIsLoading(false);
     }
   };
 
@@ -116,7 +140,12 @@ export const NetworkStatusProvider = ({ children }) => {
       console.log('API CORS error event received:', event.detail);
       // CORS errors likely indicate server is running but misconfigured
       setServerAvailable(false);
-      toast.error('API connection blocked by CORS policy. Check server configuration.', {
+      setError({
+        type: 'CORS',
+        message: 'CORS policy blocked connection',
+        details: 'Please check the server configuration.'
+      });
+      toast.error('API connection blocked by CORS policy. Please check the server configuration.', {
         autoClose: false,
         toastId: 'cors-error-notification'
       });
@@ -141,8 +170,8 @@ export const NetworkStatusProvider = ({ children }) => {
     window.addEventListener('online', handleOnlineStatusChange);
     window.addEventListener('offline', handleOnlineStatusChange);
     
-    // Initial server connection check
-    checkServerConnection(false);
+    // Initial server connection check with 2 second delay to allow app to initialize
+    setTimeout(() => checkServerConnection(false), 2000);
     
     // Periodic check for actual server availability (not just browser online status)
     const serverCheckInterval = setInterval(() => {
@@ -164,6 +193,8 @@ export const NetworkStatusProvider = ({ children }) => {
       isOnline, 
       serverAvailable, 
       lastChecked, 
+      error,
+      isLoading,
       checkServerConnection,
       apiBaseUrl: API_BASE_URL
     }}>

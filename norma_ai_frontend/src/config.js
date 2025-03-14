@@ -7,7 +7,7 @@
 const API_CONFIG = {
   // Direct IP is used to avoid IPv6 resolution issues on macOS
   BASE_URL: 'http://127.0.0.1',
-  PORT: 3001, // Changed from 3002 to 3001 to match Flask backend
+  PORT: 3001,
   API_PATH: '/api',
   TIMEOUT: 15000,
 };
